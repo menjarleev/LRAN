@@ -9,6 +9,8 @@ import util
 from util import augments, loss_collector
 from util.visualizer import Visualizer
 from subprocess import call
+from tqdm import tqdm, trange
+import numpy as np
 
 
 class Solver:
@@ -16,10 +18,18 @@ class Solver:
         self.opt = opt
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.netG = netG.Net(opt).to(self.device)
+        self.netD, self.optimG, self.optimD, self.schedulerG, self.schedulerD = [None] * 5
+        self.state_object_name = ['netG',
+                                  'schedulerG',
+                                  'optimG',
+                                  'netD',
+                                  'schedulerD',
+                                  'optimD']
         self.loss_collector = loss_collector.LossCollector(opt)
         Visualizer.log_print(opt, "# params of netG: {}".format(sum(map(lambda x: x.numel(), self.netG.parameters()))))
         self.save_dir = os.path.join(self.opt.ckpt_root, self.opt.name)
         os.makedirs(self.save_dir, exist_ok=True)
+        torch.backends.cudnn.benchmark = True
 
 
         self.optimG = torch.optim.Adam(
@@ -34,16 +44,17 @@ class Solver:
 
         if not opt.test_only:
             self.train_loader = generate_loader('train', opt)
-            self.netD = netD.Net(opt).to(self.device)
-            Visualizer.log_print(opt, "# params of netD: {}".format(sum(map(lambda x: x.numel(), self.netD.parameters()))))
-            self.optimD = torch.optim.Adam(
-                self.netD.parameters(), opt.lr,
-                betas=(0.9, 0.999), eps=1e-8
-            )
-            self.schedulerD = torch.optim.lr_scheduler.MultiStepLR(
-                self.optimD, [1000*int(d) for d in opt.decay.split('-')],
-                gamma=opt.gamma,
-            )
+            if 'GAN' in opt.loss_term:
+                self.netD = netD.Net(opt).to(self.device)
+                Visualizer.log_print(opt, "# params of netD: {}".format(sum(map(lambda x: x.numel(), self.netD.parameters()))))
+                self.optimD = torch.optim.Adam(
+                    self.netD.parameters(), opt.lr,
+                    betas=(0.9, 0.999), eps=1e-8
+                )
+                self.schedulerD = torch.optim.lr_scheduler.MultiStepLR(
+                    self.optimD, [1000*int(d) for d in opt.decay.split('-')],
+                    gamma=opt.gamma,
+                )
         self.test_loader = generate_loader('test', opt)
 
         if opt.continue_train or opt.pretrain:
@@ -52,9 +63,12 @@ class Solver:
         if not opt.test_only and opt.amp != 'O0':
             from apex import amp
             Visualizer.log_print(opt, 'use amp optimization')
-            [self.netG, self.netD], [self.optimG, self.optimD] = amp.initialize([self.netG, self.netD],
-                                                                                [self.optimG, self.optimD],
-                                                                                opt_level=opt.amp, num_losses=2)
+            if 'GAN' in opt.loss_term:
+                [self.netG, self.netD], [self.optimG, self.optimD] = amp.initialize([self.netG, self.netD],
+                                                                                    [self.optimG, self.optimD],
+                                                                                    opt_level=opt.amp, num_losses=2)
+            else:
+                self.netG, self.optimG = amp.initialize(self.netG, self.optimG, opt_level=opt.amp, num_losses=1)
         self.t1, self.t2 = None, None
         self.best_psnr, self.best_step = 0, 0
 
@@ -62,7 +76,18 @@ class Solver:
         opt = self.opt
 
         self.t1 = time.time()
-        for step in range(opt.max_steps):
+        start = 0
+        if opt.continue_train:
+            iter_path = os.path.join(self.save_dir, 'iter_step{}.txt'.format(opt.step_label))
+            if os.path.isfile(iter_path):
+                start, self.best_psnr, self.best_step = np.loadtxt(iter_path, delimiter=',')
+                start, self.best_step = int(start), int(self.best_step)
+                Visualizer.log_print(opt, '========== Resuming from iteration %d with best psnr %.2f @ step %d ========'
+                                     % (start, self.best_psnr, self.best_step))
+            else:
+                raise FileNotFoundError('iteration file at %s is not found' % iter_path)
+
+        for step in tqdm(range(start, opt.max_steps), desc='train', leave=True):
             try:
                 inputs = next(iters)
             except (UnboundLocalError, StopIteration):
@@ -84,16 +109,22 @@ class Solver:
             SR = self.netG(LR)
             if aug == 'cutout':
                 SR, HR = SR*mask, HR*mask
-            torch.autograd.set_detect_anomaly(True)
-            loss_G_GAN = self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
-            loss_G_VGG = self.loss_collector.compute_VGG_losses(SR, HR)
-            loss_G = loss_G_GAN + [loss_G_VGG]
-            self.loss_collector.loss_backward(loss_G_GAN, self.optimG, self.schedulerG, 0)
-            if opt.gclip > 0:
-                torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
-            loss_D = self.loss_collector.compute_GAN_losses(self.netD, [SR.detach(), HR], for_discriminator=True)
-            self.loss_collector.loss_backward(loss_D, self.optimD, self.schedulerD, 1)
-            loss_dict = dict(zip(self.loss_collector.loss_names, loss_G + loss_D))
+            if 'GAN' in opt.loss_term:
+                loss_G_GAN = self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
+                loss_G_VGG = self.loss_collector.compute_VGG_losses(SR, HR)
+                loss_G = loss_G_GAN + [loss_G_VGG]
+                self.loss_collector.loss_backward(loss_G_GAN, self.optimG, self.schedulerG, 0)
+                if opt.gclip > 0:
+                    torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
+                loss_D = self.loss_collector.compute_GAN_losses(self.netD, [SR.detach(), HR], for_discriminator=True)
+                self.loss_collector.loss_backward(loss_D, self.optimD, self.schedulerD, 1)
+                loss_dict = dict(zip(self.loss_collector.loss_names, loss_G + loss_D))
+            elif 'L1' in opt.loss_term:
+                loss = [self.loss_collector.compute_L1_losses(SR, HR.detach())]
+                self.loss_collector.loss_backward(loss, self.optimG, self.schedulerG, 0)
+                loss_dict = dict(zip(self.loss_collector.loss_names, loss))
+            else:
+                raise NotImplementedError('%s loss is not implemented' % opt.loss_term)
 
             if (step + 1) % opt.eval_steps == 0 or opt.debug:
                 self.summary_and_save(step, loss_dict)
@@ -111,17 +142,16 @@ class Solver:
         curr_lr = self.schedulerG.get_lr()[0]
         step, max_steps = step + 1, self.opt.max_steps
         eta = (self.t2 - self.t1) / opt.eval_steps * (max_steps - step) / 3600
-        step, max_steps = step // 1000, max_steps // 1000
         psnr = self.evaluate()
 
         if psnr >= self.best_psnr:
            self.best_psnr, self.best_step = psnr, step
-           self.save(step)
+           self.save(step, self.best_psnr, self.best_step, 'best')
         message = '[{}K/{}K] PSNR: {:.2f} (Best PSNR: {:.2f} @ {}K step) \n' \
                   '{}\n' \
-                  'LR:{}, ETA:{:.1f} hours \n'.format(step, max_steps, psnr, self.best_psnr, self.best_step, err_msg, curr_lr, eta)
+                  'LR:{}, ETA:{:.1f} hours \n'.format(step // 1000, max_steps // 1000, psnr, self.best_psnr, self.best_step, err_msg, curr_lr, eta)
         Visualizer.log_print(opt, message)
-        self.save('latest')
+        self.save(step, self.best_psnr, self.best_step, 'latest')
         self.t1 = time.time()
 
     @torch.no_grad()
@@ -130,11 +160,12 @@ class Solver:
         self.netG.eval()
 
         if opt.save_result:
-            save_root = os.path.join(opt.ckpt_root, opt.name, opt.output, opt.dataset)
+            save_root = os.path.join(opt.ckpt_root, opt.name, 'output', opt.dataset)
             os.makedirs(save_root, exist_ok=True)
 
         psnr = 0
-        for i, inputs in enumerate(self.test_loader):
+        tqdm_test = tqdm(self.test_loader, desc='test', leave=False)
+        for i, inputs in enumerate(tqdm_test):
             HR = inputs[0].to(self.device)
             LR = inputs[1].to(self.device)
 
@@ -160,74 +191,79 @@ class Solver:
 
         return psnr/len(self.test_loader)
 
-    def save(self, step):
-        def save_network(network, network_label):
-            save_path = os.path.join(self.save_dir, 'net' + network_label + '_' + str(step)+'.pth')
-            torch.save(network.state_dict(), save_path)
-
-        def save_optimizer(optimizer, optimizer_label):
-            save_path = os.path.join(self.save_dir, 'optim' + optimizer_label + '_' + str(step)+'.pth')
-            torch.save(optimizer.state_dict(), save_path)
-        save_network(self.netG, 'G')
-        save_optimizer(self.optimG, 'G')
-        if self.netD is not None:
-            save_network(self.netD, 'D')
-            save_optimizer(self.optimD, 'D')
+    def save(self, step, best_psnr, best_step, step_label):
+        def update_stat_dict(state_object, state_name):
+            if state_object is not None:
+                state_dict.update({state_name: state_object.state_dict()})
+        opt = self.opt
+        state_dict = dict()
+        state_objects = [self.netG, self.schedulerG, self.optimG]
+        if 'GAN' in opt.loss_term:
+            state_objects += [self.netD, self.schedulerD, self.optimD]
+        for obj, name in zip(state_objects, self.state_object_name):
+            update_stat_dict(obj, name)
+        state_path = os.path.join(self.save_dir, 'state_step{}.pth'.format(step_label))
+        torch.save(state_dict, state_path)
+        iter_path = os.path.join(self.save_dir, 'iter_step{}.txt'.format(step_label))
+        np.savetxt(iter_path, (step, best_psnr, best_step), delimiter=',')
+        Visualizer.log_print(opt, 'save %s state at step %d' % (step_label, step))
 
     def load(self, pretrain):
-        def load_network(network, network_label, step_label, save_path=''):
+        def load_network(network, pretrained_dict, name):
             opt = self.opt
-            save_filename = 'net%s_%s.pth' % (network_label, step_label)
-            save_path = os.path.join(self.save_dir, save_filename) if not save_path else save_path
-            if not os.path.isfile(save_path):
-                Visualizer.log_print(opt, '%s not exists yet!' % save_path)
-            else:
+            try:
+                network.load_state_dict(pretrained_dict)
+                Visualizer.log_print(opt, 'network %s loaded' % name)
+            except:
+                model_dict = network.state_dict()
                 try:
-                    loaded_weights = torch.load(save_path)
-                    network.load_state_dict(loaded_weights)
-
-                    Visualizer.log_print(opt, 'network loaded from %s' % save_path)
-                except:
-                    pretrained_dict = torch.load(save_path)
-                    model_dict = network.state_dict()
-                    try:
-                        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-                        network.load_state_dict(pretrained_dict)
-                        Visualizer.log_print(opt,
-                                             'Pretrained network %s has excessive layers; Only loading layers that are used' % network_label)
-                    except:
-                        Visualizer.log_print(opt,
-                                             'Pretrained network %s has fewer layers; The following are not initialized:' % network_label)
-                        not_initialized = set()
-                        for k, v in pretrained_dict.items():
-                            if v.size() == model_dict[k].size():
-                                model_dict[k] = v
-
-                        for k, v in model_dict.items():
-                            if k not in pretrained_dict or v.size() != pretrained_dict[k].size():
-                                not_initialized.add('.'.join(k.split('.')[:2]))
-                        Visualizer.log_print(opt, sorted(not_initialized))
-                        network.load_state_dict(model_dict)
-
-        def load_optimizer(optimizer, optimizer_label, step_label, save_path=''):
-            opt = self.opt
-            file_name = 'optim%s_%s.pth' % (optimizer_label, step_label)
-            save_path = os.path.join(self.save_dir, file_name) if not save_path else save_path
-            if not os.path.join(save_path):
-                Visualizer.log_print(opt, '%s does not exist!' % save_path)
-            else:
-                try:
-                    optimizer.load_state_dict(torch.load(save_path))
-                    Visualizer.log_print(opt, 'optimizer loaded from %s' % save_path)
+                    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+                    network.load_state_dict(pretrained_dict)
+                    Visualizer.log_print(opt,
+                                         'Pretrained network %s has excessive layers; Only loading layers that are used' % name)
                 except:
                     Visualizer.log_print(opt,
-                                         'Optimizer parameters does not match, ignore loading optimizer')
+                                         'Pretrained network %s has fewer layers; The following are not initialized:' % name)
+                    not_initialized = set()
+                    for k, v in pretrained_dict.items():
+                        if v.size() == model_dict[k].size():
+                            model_dict[k] = v
+
+                    for k, v in model_dict.items():
+                        if k not in pretrained_dict or v.size() != pretrained_dict[k].size():
+                            not_initialized.add('.'.join(k.split('.')[:2]))
+                    Visualizer.log_print(opt, sorted(not_initialized))
+                    network.load_state_dict(model_dict)
+
+        def load_other(state_object, pretrained_dict, name):
+            try:
+                state_object.load_state_dict(pretrained_dict)
+                Visualizer.log_print(opt, '%s loaded' % name)
+            except:
+                Visualizer.log_print(opt,
+                                     '%s parameters does not match, ignore loading' % name)
         opt = self.opt
-        label = 'latest' if opt.continue_train else opt.step_label
-        load_network(self.netG, 'G', label, pretrain)
+        if pretrain:
+            state_path = pretrain
+        else:
+            label = 'latest' if opt.continue_train else opt.step_label
+            state_path = os.path.join(self.save_dir, 'state_step{}.pth'.format(label))
+        if not os.path.isfile(state_path):
+            Visualizer.log_print(opt, 'state file store in %s is not found' % state_path)
+            return
+        state = torch.load(state_path)
+        state_objects = [self.netG]
         if not opt.test_only:
-            load_optimizer(self.optimG, 'G', label, pretrain)
-            load_network(self.netD, 'D', label, pretrain)
-            load_optimizer(self.optimD, 'D', label, pretrain)
+            state_objects += [self.schedulerG, self.optimG]
+            if 'GAN' in opt.loss_term:
+                state_objects += [self.netD, self.schedulerD, self.optimD]
+        for obj, name in zip(state_objects, self.state_object_name):
+            if 'net' in name and name in state:
+                load_network(obj, state[name], name)
+            elif name in state:
+                load_other(obj, state[name], name)
+            else:
+                Visualizer.log_print(opt, '%s is not found in state' % name)
+
 
 

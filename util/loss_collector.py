@@ -6,15 +6,19 @@ class LossCollector():
         self.tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
         self.criterionGAN = GANLoss(opt.gan_mode, tensor=self.tensor)
         self.criterionFeat = torch.nn.L1Loss()
+        self.criterionL1 = torch.nn.L1Loss()
         if not opt.no_vgg:
             self.criterionVGG = VGGLoss()
+        if 'L1' in opt.loss_term:
+            self.loss_names = ['L1']
+        elif 'GAN' in opt.loss_term:
+            self.loss_names_G = ['G_GAN', 'G_GAN_Feat',
+                                 'G_VGG']
 
-        self.loss_names_G = ['G_GAN', 'G_GAN_Feat',
-                             'G_VGG']
-
-        self.loss_names_D = ['D_real', 'D_fake']
-
-        self.loss_names = self.loss_names_G + self.loss_names_D
+            self.loss_names_D = ['D_real', 'D_fake']
+            self.loss_names = self.loss_names_G + self.loss_names_D
+        else:
+            raise NotImplementedError('%s is not implemented' % opt.loss_term)
 
     def compute_GAN_losses(self, netD, data_list, for_discriminator):
         fake, gt = data_list
@@ -29,6 +33,11 @@ class LossCollector():
             loss_G_GAN = self.criterionGAN(pred_fake, True)
             loss_G_GAN_Feat = self.GAN_matching_loss(pred_real, pred_fake, for_discriminator)
             return [loss_G_GAN, loss_G_GAN_Feat]
+
+    def compute_L1_losses(self, fake_image, gt_image):
+        opt = self.opt
+        loss_L1 = self.criterionL1(fake_image, gt_image)
+        return loss_L1 * opt.lambda_L1
 
     def compute_VGG_losses(self, fake_image, gt_image):
         loss_G_VGG = self.tensor(1).fill_(0)

@@ -109,6 +109,7 @@ def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, re
 class Net(nn.Module):
     def __init__(self, opt):
         super(Net, self).__init__()
+        self.__name__ = 'netG'
         actv = ops.get_layer('actv', opt.actv_G, opt.slope_G)
         padding_mode = opt.padding_G
         self.sub_mean = ops.MeanShift(1)

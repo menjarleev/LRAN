@@ -4,6 +4,7 @@ from .simple import Net as NLayerDiscriminator
 class Net(nn.Module):
     def __init__(self, opt):
         super(Net, self).__init__()
+        self.__name__ = 'netD'
         self.num_D = opt.num_D
         self.n_layers = opt.n_layer_D
         self.get_inter_feat = not opt.no_GAN_feat
