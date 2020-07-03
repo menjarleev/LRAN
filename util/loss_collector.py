@@ -8,7 +8,7 @@ class LossCollector():
         self.criterionFeat = torch.nn.L1Loss()
         self.criterionL1 = torch.nn.L1Loss()
         if not opt.no_vgg:
-            self.criterionVGG = VGGLoss()
+            self.criterionVGG = VGGLoss(opt)
         if 'L1' in opt.loss_term:
             self.loss_names = ['L1']
         elif 'GAN' in opt.loss_term:

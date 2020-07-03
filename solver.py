@@ -194,7 +194,12 @@ class Solver:
     def save(self, step, best_psnr, best_step, step_label):
         def update_stat_dict(state_object, state_name):
             if state_object is not None:
-                state_dict.update({state_name: state_object.state_dict()})
+                if 'net' in state_name:
+                    state_dict.update({state_name: state_object.cpu().state_dict()})
+                    if torch.cuda.is_available():
+                        state_object.to(self.device)
+                else:
+                    state_dict.update({state_name: state_object.state_dict()})
         opt = self.opt
         state_dict = dict()
         state_objects = [self.netG, self.schedulerG, self.optimG]
@@ -260,6 +265,7 @@ class Solver:
         for obj, name in zip(state_objects, self.state_object_name):
             if 'net' in name and name in state:
                 load_network(obj, state[name], name)
+                obj.cuda()
             elif name in state:
                 load_other(obj, state[name], name)
             else:

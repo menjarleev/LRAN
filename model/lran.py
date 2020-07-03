@@ -130,11 +130,11 @@ class Net(nn.Module):
         self.opt = opt
 
     def forward(self, img):
-        norm_img = self.sub_mean(img)
-        head_out = self.head(norm_img)
-        body_out, _ = self.body(head_out)
-        tail_out = self.tail(body_out)
-        x = self.add_mean(tail_out)
+        x = self.sub_mean(img)
+        x = self.head(x)
+        x , _ = self.body(x)
+        x = self.tail(x)
+        x = self.add_mean(x)
         return x
 
 
