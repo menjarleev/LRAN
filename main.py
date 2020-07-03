@@ -8,6 +8,7 @@ import os
 
 def main():
     opt = get_option()
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu_id)
     torch.manual_seed(opt.seed)
     generator = importlib.import_module("model.{}".format(opt.netG.lower()))
     discriminator = importlib.import_module('model.{}'.format(opt.netD.lower()))

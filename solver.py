@@ -16,7 +16,7 @@ import numpy as np
 class Solver:
     def __init__(self, netG, netD, opt):
         self.opt = opt
-        self.device = torch.device('cuda:{}'.format(opt.gpu_id) if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.netG = netG.Net(opt).to(self.device)
         self.netD, self.optimG, self.optimD, self.schedulerG, self.schedulerD = [None] * 5
         self.state_object_name = ['netG',
@@ -174,8 +174,8 @@ class Solver:
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
 
             SR = self.netG(LR).detach()
-            HR = HR[0].add_(1).mul(127.5).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
-            SR = SR[0].add_(1).mul(127.5).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
+            HR = HR[0].add(1).mul(127.5).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
+            SR = SR[0].add(1).mul(127.5).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
 
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
@@ -194,7 +194,12 @@ class Solver:
     def save(self, step, best_psnr, best_step, step_label):
         def update_stat_dict(state_object, state_name):
             if state_object is not None:
-                state_dict.update({state_name: state_object.state_dict()})
+                if 'net' in state_name:
+                    state_dict.update({state_name: state_object.cpu().state_dict()})
+                    if torch.cuda.is_available():
+                        state_object.to(self.device)
+                else:
+                    state_dict.update({state_name: state_object.state_dict()})
         opt = self.opt
         state_dict = dict()
         state_objects = [self.netG, self.schedulerG, self.optimG]
@@ -260,6 +265,7 @@ class Solver:
         for obj, name in zip(state_objects, self.state_object_name):
             if 'net' in name and name in state:
                 load_network(obj, state[name], name)
+                obj.cuda()
             elif name in state:
                 load_other(obj, state[name], name)
             else:
