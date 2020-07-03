@@ -10,6 +10,8 @@ def generate_loader(phase ,opt):
     cname = opt.dataset.replace('_', '')
     if "DIV2K" in opt.dataset:
         mname = importlib.import_module('data.div2k')
+    elif 'AIMSR' in opt.dataset:
+        mname = importlib.import_module('data.aim')
     else:
         raise ValueError('Unsupported datasetL {}'.format(opt.dataset))
 
@@ -80,6 +82,9 @@ class BaseDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         if self.phase == 'train':
-            return (1000 * self.opt.batch_size) // len(self.HQ_paths) * len(self.HQ_paths)
+            if 'AIMSR' in self.opt.dataset:
+                return len(self.HQ_paths) // self.opt.batch_size * self.opt.batch_size
+            else:
+                return (1000 * self.opt.batch_size) // len(self.HQ_paths) * len(self.HQ_paths)
         return len(self.HQ_paths)
 

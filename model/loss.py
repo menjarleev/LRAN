@@ -99,7 +99,7 @@ class VGGLoss(nn.Module):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.vgg = VGG_Activations([1, 6, 11, 20, 29]).to(self.device)
         self.criterion = nn.L1Loss()
-        self.weights = [1.0 / 32, 1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0]
+        self.weights = [1.0 / 8, 1.0 / 4, 1.0 / 2, 1.0 / 8, 1.0 / 16]
         self.downsample = nn.AvgPool2d(2, stride=2, count_include_pad=False)
 
     def compute_loss(self, x_vgg, y_vgg):

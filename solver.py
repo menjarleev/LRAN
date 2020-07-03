@@ -109,10 +109,14 @@ class Solver:
             SR = self.netG(LR)
             if aug == 'cutout':
                 SR, HR = SR*mask, HR*mask
+
+            self.loss_collector.update_L1_weight(step)
+
             if 'GAN' in opt.loss_term:
                 loss_G_GAN = self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
                 loss_G_VGG = self.loss_collector.compute_VGG_losses(SR, HR)
-                loss_G = loss_G_GAN + [loss_G_VGG]
+                loss_L1 = self.loss_collector.compute_L1_losses(SR, HR)
+                loss_G = loss_G_GAN + [loss_G_VGG, loss_L1]
                 self.loss_collector.loss_backward(loss_G_GAN, self.optimG, self.schedulerG, 0)
                 if opt.gclip > 0:
                     torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)

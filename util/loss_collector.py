@@ -7,18 +7,31 @@ class LossCollector():
         self.criterionGAN = GANLoss(opt.gan_mode, tensor=self.tensor)
         self.criterionFeat = torch.nn.L1Loss()
         self.criterionL1 = torch.nn.L1Loss()
+        self.weight = {'L1': opt.lambda_L1,
+                       'feat': opt.lambda_feat,
+                       'VGG': opt.lambda_vgg}
+
         if not opt.no_vgg:
             self.criterionVGG = VGGLoss(opt)
         if 'L1' in opt.loss_term:
             self.loss_names = ['L1']
         elif 'GAN' in opt.loss_term:
             self.loss_names_G = ['G_GAN', 'G_GAN_Feat',
-                                 'G_VGG']
+                                 'G_VGG', 'L1']
 
             self.loss_names_D = ['D_real', 'D_fake']
             self.loss_names = self.loss_names_G + self.loss_names_D
         else:
             raise NotImplementedError('%s is not implemented' % opt.loss_term)
+
+    def update_L1_weight(self, step):
+        L1_decay = self.opt.L1_decay
+        if step + 1 < L1_decay[0]:
+            return
+        elif step + 1 >= L1_decay[0] and step + 1 < sum(L1_decay):
+            self.weight['L1'] = self.weight['L1'] * (1 - (step + 1 - L1_decay[0]) / L1_decay[1])
+        else:
+            self.weight['L1'] = 0
 
     def compute_GAN_losses(self, netD, data_list, for_discriminator):
         fake, gt = data_list
@@ -35,9 +48,8 @@ class LossCollector():
             return [loss_G_GAN, loss_G_GAN_Feat]
 
     def compute_L1_losses(self, fake_image, gt_image):
-        opt = self.opt
         loss_L1 = self.criterionL1(fake_image, gt_image)
-        return loss_L1 * opt.lambda_L1
+        return loss_L1 * 127.5 * self.weight['L1']
 
     def compute_VGG_losses(self, fake_image, gt_image):
         loss_G_VGG = self.tensor(1).fill_(0)
@@ -47,7 +59,7 @@ class LossCollector():
                 fake_image = fake_image[-1]
                 gt_image = gt_image[-1]
             loss_G_VGG = self.criterionVGG(fake_image, gt_image)
-        return loss_G_VGG * opt.lambda_vgg
+        return loss_G_VGG * self.weight['VGG']
 
     def GAN_matching_loss(self, pred_real, pred_fake, for_discriminator=False):
         loss_G_GAN_Feat = self.tensor(1).fill_(0)
@@ -58,7 +70,7 @@ class LossCollector():
                 for j in range(len(pred_fake[i])-1):
                     loss = self.criterionFeat(pred_fake[i][j], pred_real[i][j].detach())
                     loss_G_GAN_Feat = loss_G_GAN_Feat + D_masks * loss
-        return loss_G_GAN_Feat * self.opt.lambda_feat
+        return loss_G_GAN_Feat * self.weight['L1']
 
     def loss_backward(self, losses, optimizer, scheduler, loss_id):
         opt = self.opt

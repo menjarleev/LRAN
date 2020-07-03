@@ -33,9 +33,9 @@ def parse_args():
 
     # dataset
     parser.add_argument('--dataset_root', type=str, default='./')
-    parser.add_argument('--dataset', type=str, default='DIV2K_SR')
+    parser.add_argument('--dataset', type=str, default='AIMSR')
     parser.add_argument('--camera', type=str, default='all')  # RealSR
-    parser.add_argument('--div2k_range', type=str, default='1-800/801-810')
+    parser.add_argument('--image_range', type=str, default='1-800/801-810')
     parser.add_argument('--scale', type=int, default=4)  # SR scale
     parser.add_argument('--sigma', type=int, default=10)  # DN
     parser.add_argument('--quality', type=int, default=10)  # DeJPEG
@@ -56,10 +56,10 @@ def parse_args():
     parser.add_argument('--test_only', action='store_true')
     parser.add_argument('--save_result', action='store_true')
     parser.add_argument('--ckpt_root', type=str, default='./ckpt')
-    # parser.add_argument('--save_root', type=str, default='./output')
     parser.add_argument('--no_GAN_feat', action='store_true')
     parser.add_argument('--lambda_feat', type=float, default=10.0)
-    parser.add_argument('--lambda_L1', type=float, default=255.0)
+    parser.add_argument('--lambda_L1', type=float, default=1.0)
+    parser.add_argument('--L1_decay', type=str, nargs='*', default=[50000, 50000])
     parser.add_argument('--no_vgg', action='store_true')
     parser.add_argument('--lambda_vgg', type=float, default=10.0)
     parser.add_argument('--debug', action='store_true')
@@ -70,6 +70,8 @@ def parse_args():
     parser.add_argument('--continue_train', action='store_true')
     parser.add_argument('--loss_term', type=str, default='GAN')
     parser.add_argument('--gpu_id', type=int, default=0)
+    parser.add_argument('--dir_HQ', type=str, default='x1')
+    parser.add_argument('--dir_LQ', type=str, default='x4')
 
     return parser.parse_args()
 
@@ -99,6 +101,7 @@ def make_template(opt):
         opt.max_steps = 1000000
         opt.decay = "200-400-600-800"
         opt.gclip = 0.5 if opt.pretrain else opt.gclip
+
     if "CARN" in opt.netG:
         opt.num_groups = 3
         opt.num_blocks = 3
@@ -111,6 +114,8 @@ def make_template(opt):
     if "DN" in opt.dataset or "JPEG" in opt.dataset:
         opt.max_steps = 1000000
         opt.decay = "300-550-800"
+    if 'AIM' in opt.dataset:
+        opt.image_range = '1-19000/1-10'
     if "RealSR" in opt.dataset:
         opt.patch_size *= opt.scale  # identical (LR, HR) resolution
 
