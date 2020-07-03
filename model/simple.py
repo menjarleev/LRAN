@@ -11,8 +11,7 @@ class Net(torch.nn.Module):
         self.get_inter_feat = not opt.no_GAN_feat
         padding_mode = opt.padding_D
 
-        sequence = [[MeanShift(rgb_range=1),
-                     conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
+        sequence = [[ conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
                      actv()]]
         nf = ndf
         for n in range(1, self.n_layer):

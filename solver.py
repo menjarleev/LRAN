@@ -122,7 +122,7 @@ class Solver:
                 self.loss_collector.loss_backward(loss_G_GAN, self.optimG, self.schedulerG, 0)
                 if opt.gclip > 0:
                     torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
-                loss_D = self.loss_collector.compute_GAN_losses(self.netD, [SR.detach(), HR], for_discriminator=True)
+                loss_D = self.loss_collector.compute_GAN_losses(self.netD, [res_fake.detach(), res_real], for_discriminator=True)
                 self.loss_collector.loss_backward(loss_D, self.optimD, self.schedulerD, 1)
                 loss_dict = dict(zip(self.loss_collector.loss_names, loss_G + loss_D))
             elif 'L1' in opt.loss_term:
@@ -148,7 +148,8 @@ class Solver:
         curr_lr = self.schedulerG.get_lr()[0]
         step, max_steps = step + 1, self.opt.max_steps
         eta = (self.t2 - self.t1) / opt.eval_steps * (max_steps - step) / 3600
-        psnr = self.evaluate()
+        psnr = 0
+        # psnr = self.evaluate()
 
         if psnr >= self.best_psnr:
            self.best_psnr, self.best_step = psnr, step

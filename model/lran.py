@@ -111,8 +111,8 @@ class Net(nn.Module):
         super(Net, self).__init__()
         actv = ops.get_layer('actv', opt.actv_G, opt.slope_G)
         padding_mode = opt.padding_G
-        # self.sub_mean = ops.MeanShift(1)
-        # self.add_mean = ops.MeanShift(1, sign=1)
+        self.sub_mean = ops.MeanShift(1)
+        self.add_mean = ops.MeanShift(1, sign=1)
         if 'cutblur' in opt.augs:
             head = [ops.DownBlock(opt.scale),
                     nn.Conv2d(3*opt.scale**2, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
@@ -121,7 +121,6 @@ class Net(nn.Module):
         tail = [
             ops.Upsampler(opt.num_channels, opt.scale),
             nn.Conv2d(opt.num_channels, 3, 3, 1, 1, padding_mode=padding_mode),
-            nn.Tanh()
         ]
         self.head = nn.Sequential(*head)
         self.body = get_LRAB_group(n_channel=opt.num_channels, n_block=opt.num_blocks,
@@ -131,9 +130,11 @@ class Net(nn.Module):
         self.opt = opt
 
     def forward(self, img):
-        x = self.head(img)
+        x = self.sub_mean(img)
+        x = self.head(x)
         x, _ = self.body(x)
         x = self.tail(x)
+        x = self.add_mean(x)
         return x
 
 

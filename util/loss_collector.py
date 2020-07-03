@@ -2,6 +2,7 @@ from model.loss import *
 import torch
 class LossCollector():
     def __init__(self, opt):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.opt = opt
         self.tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
         self.criterionGAN = GANLoss(opt.gan_mode, tensor=self.tensor)
@@ -12,7 +13,7 @@ class LossCollector():
                        'VGG': opt.lambda_vgg}
 
         if not opt.no_vgg:
-            self.criterionVGG = VGGLoss(opt)
+            self.criterionVGG = VGGLoss(opt).to(self.device)
         if 'L1' in opt.loss_term:
             self.loss_names = ['L1']
         elif 'GAN' in opt.loss_term:
@@ -28,7 +29,7 @@ class LossCollector():
         L1_decay = self.opt.L1_decay
         if step + 1 < L1_decay[0]:
             return
-        elif step + 1 >= L1_decay[0] and step + 1 < sum(L1_decay):
+        elif sum(L1_decay) > step + 1 >= L1_decay[0]:
             self.weight['L1'] = self.weight['L1'] * (1 - (step + 1 - L1_decay[0]) / L1_decay[1])
         else:
             self.weight['L1'] = 0
@@ -49,7 +50,7 @@ class LossCollector():
 
     def compute_L1_losses(self, fake_image, gt_image):
         loss_L1 = self.criterionL1(fake_image, gt_image)
-        return loss_L1 * 127.5 * self.weight['L1']
+        return loss_L1 * 255 * self.weight['L1']
 
     def compute_VGG_losses(self, fake_image, gt_image):
         loss_G_VGG = self.tensor(1).fill_(0)
@@ -70,7 +71,7 @@ class LossCollector():
                 for j in range(len(pred_fake[i])-1):
                     loss = self.criterionFeat(pred_fake[i][j], pred_real[i][j].detach())
                     loss_G_GAN_Feat = loss_G_GAN_Feat + D_masks * loss
-        return loss_G_GAN_Feat * self.weight['L1']
+        return loss_G_GAN_Feat * self.weight['feat']
 
     def loss_backward(self, losses, optimizer, scheduler, loss_id):
         opt = self.opt

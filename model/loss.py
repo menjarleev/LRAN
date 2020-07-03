@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .vgg import VGG_Activations
+from .ops import MeanShift
 
 class GANLoss(nn.Module):
     def __init__(self, gan_mode, target_real_label=1.0, target_fake_label=0.0,
@@ -96,11 +97,11 @@ class GANLoss(nn.Module):
 class VGGLoss(nn.Module):
     def __init__(self, opt):
         super(VGGLoss, self).__init__()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.vgg = VGG_Activations([1, 6, 11, 20, 29]).to(self.device)
+        self.vgg = VGG_Activations([1, 6, 11, 20, 29])
         self.criterion = nn.L1Loss()
         self.weights = [1.0 / 8, 1.0 / 4, 1.0 / 2, 1.0 / 8, 1.0 / 16]
         self.downsample = nn.AvgPool2d(2, stride=2, count_include_pad=False)
+        self.sub_mean = MeanShift(rgb_range=1)
 
     def compute_loss(self, x_vgg, y_vgg):
         loss = 0
@@ -114,6 +115,7 @@ class VGGLoss(nn.Module):
             x, y = x.view(-1, c, h, w), y.view(-1, c, h, w)
         while x.size()[-1] > 1024:
             x, y = self.downsample(x), self.downsample(y)
+        x, y = self.sub_mean(x), self.sub_mean(y)
         y_vgg = self.vgg(y)
         x_vgg = self.vgg(x)
         loss = self.compute_loss(x_vgg, y_vgg)
