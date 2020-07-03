@@ -87,7 +87,7 @@ class Solver:
             else:
                 raise FileNotFoundError('iteration file at %s is not found' % iter_path)
 
-        for step in tqdm(range(start, opt.max_steps), desc='train', leave=True):
+        for step in tqdm(range(start, opt.max_steps), desc='train', leave=False):
             try:
                 inputs = next(iters)
             except (UnboundLocalError, StopIteration):
@@ -147,9 +147,9 @@ class Solver:
         if psnr >= self.best_psnr:
            self.best_psnr, self.best_step = psnr, step
            self.save(step, self.best_psnr, self.best_step, 'best')
-        message = '[{}K/{}K] PSNR: {:.2f} (Best PSNR: {:.2f} @ {}K step) \n' \
+        message = '[{}K/{}K] psnr: {:.2f} (best psnr: {:.2f} @ {}K step) \n' \
                   '{}\n' \
-                  'LR:{}, ETA:{:.1f} hours \n'.format(step // 1000, max_steps // 1000, psnr, self.best_psnr, self.best_step, err_msg, curr_lr, eta)
+                  'LR:{}, ETA:{:.1f} hours \n'.format(step // 1000, max_steps // 1000, psnr, self.best_psnr, self.best_step // 1000, err_msg, curr_lr, eta)
         Visualizer.log_print(opt, message)
         self.save(step, self.best_psnr, self.best_step, 'latest')
         self.t1 = time.time()

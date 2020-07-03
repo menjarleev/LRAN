@@ -59,7 +59,7 @@ def parse_args():
     # parser.add_argument('--save_root', type=str, default='./output')
     parser.add_argument('--no_GAN_feat', action='store_true')
     parser.add_argument('--lambda_feat', type=float, default=10.0)
-    parser.add_argument('--lambda_L1', type=float, default=1.0)
+    parser.add_argument('--lambda_L1', type=float, default=255.0)
     parser.add_argument('--no_vgg', action='store_true')
     parser.add_argument('--lambda_vgg', type=float, default=10.0)
     parser.add_argument('--debug', action='store_true')
