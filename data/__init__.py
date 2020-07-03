@@ -4,6 +4,7 @@ import skimage.io as io
 import skimage.color as color
 import torch
 import util
+from torchvision.transforms import Normalize
 
 def generate_loader(phase ,opt):
     cname = opt.dataset.replace('_', '')
