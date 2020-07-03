@@ -69,6 +69,7 @@ def parse_args():
     parser.add_argument('--step_label', type=str, default='latest')
     parser.add_argument('--continue_train', action='store_true')
     parser.add_argument('--loss_term', type=str, default='GAN')
+    parser.add_argument('--gpu_id', type=int, default=0)
 
     return parser.parse_args()
 

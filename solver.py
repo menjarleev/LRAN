@@ -16,7 +16,7 @@ import numpy as np
 class Solver:
     def __init__(self, netG, netD, opt):
         self.opt = opt
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:{}'.format(opt.gpu_id) if torch.cuda.is_available() else 'cpu')
         self.netG = netG.Net(opt).to(self.device)
         self.netD, self.optimG, self.optimD, self.schedulerG, self.schedulerD = [None] * 5
         self.state_object_name = ['netG',
@@ -174,8 +174,8 @@ class Solver:
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
 
             SR = self.netG(LR).detach()
-            HR = HR[0].mul(opt.rgb_range).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
-            SR = SR[0].mul(opt.rgb_range).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
+            HR = HR[0].add_(1).mul(127.5).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
+            SR = SR[0].add_(1).mul(127.5).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
 
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))

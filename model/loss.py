@@ -94,9 +94,9 @@ class GANLoss(nn.Module):
 
 
 class VGGLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, opt):
         super(VGGLoss, self).__init__()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:{}'.format(opt.gpu_id) if torch.cuda.is_available() else 'cpu')
         self.vgg = VGG_Activations([1, 6, 11, 20, 29]).to(self.device)
         self.criterion = nn.L1Loss()
         self.weights = [1.0 / 32, 1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0]
