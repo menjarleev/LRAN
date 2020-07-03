@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('--augs', nargs='*', default=["none"])
     parser.add_argument('--prob', nargs='*', default=[1.0])
     parser.add_argument('--mix_p', nargs='*')
-    parser.add_argument('--alpha', nargs='*', default=[1.0])
+    parser.add_argument('--alpha', nargs='*', default=[0.7])
     parser.add_argument('--aux_prob', type=float, default=1.0)
     parser.add_argument('--aux_alpha', type=float, default=1.2)
 
@@ -115,16 +115,17 @@ def make_template(opt):
         opt.max_steps = 1000000
         opt.decay = "300-550-800"
     if 'AIM' in opt.dataset:
-        opt.image_range = '1-19000/1-10'
+        opt.image_range = '1-19000/1-30'
     if "RealSR" in opt.dataset:
         opt.patch_size *= opt.scale  # identical (LR, HR) resolution
 
     # evaluation setup
     opt.crop = 6 if "DIV2K" in opt.dataset else 0
     opt.crop += opt.scale if "SR" in opt.dataset else 4
+    opt.crop = 0 if 'AIMSR' in opt.dataset else opt.crop
 
     # note: we tested on color DN task
-    if "DIV2K" in opt.dataset or "DN" in opt.dataset:
+    if "DIV2K" in opt.dataset or "DN" in opt.dataset or 'AIMSR' in opt.dataset:
         opt.eval_y_only = False
     else:
         opt.eval_y_only = True

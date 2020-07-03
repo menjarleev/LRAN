@@ -113,7 +113,9 @@ class Solver:
             self.loss_collector.update_L1_weight(step)
 
             if 'GAN' in opt.loss_term:
-                loss_G_GAN = self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
+                res_fake = SR - LR
+                res_real = HR - LR
+                loss_G_GAN = self.loss_collector.compute_GAN_losses(self.netD, [res_fake, res_real], for_discriminator=False)
                 loss_G_VGG = self.loss_collector.compute_VGG_losses(SR, HR)
                 loss_L1 = self.loss_collector.compute_L1_losses(SR, HR)
                 loss_G = loss_G_GAN + [loss_G_VGG, loss_L1]
