@@ -69,10 +69,11 @@ def parse_args():
     parser.add_argument('--print_mem', type=bool, default=True)
     parser.add_argument('--step_label', type=str, default='latest')
     parser.add_argument('--continue_train', action='store_true')
-    parser.add_argument('--loss_term', type=str, default='GAN')
+    parser.add_argument('--loss_terms', type=str, default='GAN|feat|L1|VGG')
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--dir_HQ', type=str, default='x1')
     parser.add_argument('--dir_LQ', type=str, default='x4')
+    parser.add_argument('--normalize', type=bool, default=False)
 
     return parser.parse_args()
 
@@ -92,6 +93,7 @@ def make_template(opt):
         opt.decay = '200-400-600-800'
         opt.max_steps = 1000000
         opt.reduction = 16
+        opt.no_GAN_feat = True
 
     if "RCAN" in opt.netG:
         opt.num_groups = 10

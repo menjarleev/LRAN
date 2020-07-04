@@ -11,11 +11,15 @@ class Net(torch.nn.Module):
         self.n_layer = opt.n_layer_D
         self.get_inter_feat = not opt.no_GAN_feat
         padding_mode = opt.padding_D
-
-        sequence = [[MeanShift(1),
-                     conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
-                     norm(ndf),
-                     actv()]]
+        if opt.normalize:
+            sequence = [[conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
+                         norm(ndf),
+                         actv()]]
+        else:
+            sequence = [[MeanShift(1),
+                         conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
+                         norm(ndf),
+                         actv()]]
         nf = ndf
         for n in range(1, self.n_layer):
             nf_prev = nf

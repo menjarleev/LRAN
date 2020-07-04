@@ -1,14 +1,31 @@
 import torch
 import numpy as np
 from torchvision.transforms import Normalize
-def im2tensor(im, rgb_range=255):
+def im2tensor(im):
     if type(im) == list:
         return [im2tensor(i) for i in im]
     else:
         np_t = np.ascontiguousarray(im.transpose((2, 0, 1)))
         tensor = torch.from_numpy(np_t).float()
-        tensor = tensor.div_(rgb_range)
+        tensor = tensor.div_(255.0)
         return tensor
+
+def tensor2im(image_tensor, normalize=False):
+    if isinstance(image_tensor, list):
+        return [tensor2im(t, normalize) for t in image_tensor]
+    if len(image_tensor.size()) == 4:
+        image_tensor = image_tensor[0]
+    image_numpy = image_tensor.cpu().float().numpy()
+    if normalize:
+        image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0
+    else:
+        image_numpy = np.transpose(image_numpy, (1, 2, 0)) * 255.0
+    image_numpy = np.clip(image_numpy, 0, 255).round()
+    if image_numpy.shape[2] == 1:
+        image_numpy = image_numpy[:, :, 0]
+    return image_numpy.astype(np.uint8)
+
+
 
 
 def normalize(tensor, mean=0.5, std=0.5):

@@ -101,7 +101,9 @@ class VGGLoss(nn.Module):
         self.criterion = nn.L1Loss()
         self.weights = [1.0 / 8, 1.0 / 4, 1.0 / 2, 1.0 / 8, 1.0 / 16]
         self.downsample = nn.AvgPool2d(2, stride=2, count_include_pad=False)
-        self.sub_mean = MeanShift(rgb_range=1)
+        self.normalize = opt.normalize
+        if not self.normalize:
+            self.sub_mean = MeanShift(rgb_range=1)
 
     def compute_loss(self, x_vgg, y_vgg):
         loss = 0
@@ -115,7 +117,8 @@ class VGGLoss(nn.Module):
             x, y = x.view(-1, c, h, w), y.view(-1, c, h, w)
         while x.size()[-1] > 1024:
             x, y = self.downsample(x), self.downsample(y)
-        x, y = self.sub_mean(x), self.sub_mean(y)
+        if not self.normalize:
+            x, y = self.sub_mean(x), self.sub_mean(y)
         y_vgg = self.vgg(y)
         x_vgg = self.vgg(x)
         loss = self.compute_loss(x_vgg, y_vgg)

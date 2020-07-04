@@ -11,6 +11,7 @@ from util.visualizer import Visualizer
 from subprocess import call
 from tqdm import tqdm, trange
 import numpy as np
+from util.tensor_process import tensor2im
 
 
 class Solver:
@@ -44,7 +45,7 @@ class Solver:
 
         if not opt.test_only:
             self.train_loader = generate_loader('train', opt)
-            if 'GAN' in opt.loss_term:
+            if 'GAN' in opt.loss_terms:
                 self.netD = netD.Net(opt).to(self.device)
                 Visualizer.log_print(opt, "# params of netD: {}".format(sum(map(lambda x: x.numel(), self.netD.parameters()))))
                 self.optimD = torch.optim.Adam(
@@ -63,7 +64,7 @@ class Solver:
         if not opt.test_only and opt.amp != 'O0':
             from apex import amp
             Visualizer.log_print(opt, 'use amp optimization')
-            if 'GAN' in opt.loss_term:
+            if 'GAN' in opt.loss_terms:
                 [self.netG, self.netD], [self.optimG, self.optimD] = amp.initialize([self.netG, self.netD],
                                                                                     [self.optimG, self.optimD],
                                                                                     opt_level=opt.amp, num_losses=2)
@@ -107,28 +108,33 @@ class Solver:
             )
 
             SR = self.netG(LR)
+
             if aug == 'cutout':
                 SR, HR = SR*mask, HR*mask
 
+            loss_G, loss_D = [], []
+
             self.loss_collector.update_L1_weight(step)
 
-            if 'GAN' in opt.loss_term:
-                loss_G_GAN = self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
-                loss_G_VGG = self.loss_collector.compute_VGG_losses(SR, HR)
-                loss_L1 = self.loss_collector.compute_L1_losses(SR, HR)
-                loss_G = loss_G_GAN + [loss_G_VGG, loss_L1]
-                self.loss_collector.loss_backward(loss_G_GAN, self.optimG, self.schedulerG, 0)
-                if opt.gclip > 0:
-                    torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
-                loss_D = self.loss_collector.compute_GAN_losses(self.netD, [SR.detach(), HR], for_discriminator=True)
-                self.loss_collector.loss_backward(loss_D, self.optimD, self.schedulerD, 1)
-                loss_dict = dict(zip(self.loss_collector.loss_names, loss_G + loss_D))
-            elif 'L1' in opt.loss_term:
-                loss = [self.loss_collector.compute_L1_losses(SR, HR.detach())]
-                self.loss_collector.loss_backward(loss, self.optimG, self.schedulerG, 0)
-                loss_dict = dict(zip(self.loss_collector.loss_names, loss))
-            else:
-                raise NotImplementedError('%s loss is not implemented' % opt.loss_term)
+            if 'GAN' in opt.loss_terms:
+                self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
+            if 'VGG' in opt.loss_terms:
+                self.loss_collector.compute_VGG_losses(SR, HR)
+            if 'feat' in opt.loss_terms:
+                self.loss_collector.compute_feat_losses(self.netD, [SR, HR])
+            if 'L1' in opt.loss_terms:
+                self.loss_collector.compute_L1_losses(SR, HR)
+
+            self.loss_collector.loss_backward(self.loss_collector.loss_names_G, self.optimG, self.schedulerG, 0)
+
+            if opt.gclip > 0:
+                torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
+
+            if 'GAN' in opt.loss_terms:
+                self.loss_collector.compute_GAN_losses(self.netD, [SR.detach(), HR], for_discriminator=True)
+                self.loss_collector.loss_backward(self.loss_collector.loss_names_D, self.optimD, self.schedulerD, 1)
+
+            loss_dict = {**self.loss_collector.loss_names_G, **self.loss_collector.loss_names_D}
 
             if (step + 1) % opt.eval_steps == 0 or opt.debug:
                 self.summary_and_save(step, loss_dict)
@@ -181,14 +187,14 @@ class Solver:
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
 
             SR = self.netG(LR).detach()
-            HR = HR[0].mul(255).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
-            SR = SR[0].mul(255).clamp(0, 255).round().cpu().byte().permute(1, 2, 0).numpy()
+            HR, SR = tensor2im([HR, SR], normalize=opt.normalize)
 
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
                 io.imsave(save_path, SR)
-            # HR = HR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
-            # SR = SR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
+            if opt.crop:
+                HR = HR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
+                SR = SR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
             if opt.eval_y_only:
                 HR = util.rgb2ycbcr(HR)
                 SR = util.rgb2ycbcr(SR)
@@ -210,7 +216,7 @@ class Solver:
         opt = self.opt
         state_dict = dict()
         state_objects = [self.netG, self.schedulerG, self.optimG]
-        if 'GAN' in opt.loss_term:
+        if 'GAN' in opt.loss_terms:
             state_objects += [self.netD, self.schedulerD, self.optimD]
         for obj, name in zip(state_objects, self.state_object_name):
             update_stat_dict(obj, name)
@@ -267,7 +273,7 @@ class Solver:
         state_objects = [self.netG]
         if not opt.test_only:
             state_objects += [self.schedulerG, self.optimG]
-            if 'GAN' in opt.loss_term:
+            if 'GAN' in opt.loss_terms:
                 state_objects += [self.netD, self.schedulerD, self.optimD]
         for obj, name in zip(state_objects, self.state_object_name):
             if 'net' in name and name in state:

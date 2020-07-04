@@ -14,16 +14,24 @@ class LossCollector():
 
         if not opt.no_vgg:
             self.criterionVGG = VGGLoss(opt).to(self.device)
-        if 'L1' in opt.loss_term:
-            self.loss_names = ['L1']
-        elif 'GAN' in opt.loss_term:
-            self.loss_names_G = ['G_GAN', 'G_GAN_Feat',
-                                 'G_VGG', 'L1']
 
-            self.loss_names_D = ['D_real', 'D_fake']
-            self.loss_names = self.loss_names_G + self.loss_names_D
-        else:
-            raise NotImplementedError('%s is not implemented' % opt.loss_term)
+        self.loss_names_G = dict()
+        self.loss_names_D = dict()
+
+        if 'GAN'.lower() in opt.loss_terms.lower():
+            self.loss_names_G['G_GAN'] = 0
+            self.loss_names_D['D_real'] = 0
+            self.loss_names_D['D_fake'] = 0
+
+        if 'feat'.lower() in opt.loss_terms.lower():
+            self.loss_names_G['G_GAN_Feat'] = 0
+
+        if 'VGG'.lower() in opt.loss_terms.lower():
+
+            self.loss_names_G['VGG'] = 0
+
+        if 'L1'.lower() in opt.loss_terms.lower():
+            self.loss_names_G['L1'] = 0
 
     def update_L1_weight(self, step):
         L1_decay = self.opt.L1_decay
@@ -39,32 +47,42 @@ class LossCollector():
         pred_fake = netD(fake)
         pred_real = netD(gt)
         if for_discriminator:
+            assert 'D_real' in self.loss_names_D and 'D_fake' in self.loss_names_D
             loss_D_real = self.criterionGAN(pred_real, True)
             loss_D_fake = self.criterionGAN(pred_fake, False)
-            return [loss_D_real, loss_D_fake]
+            self.loss_names_D['D_real'] = loss_D_real
+            self.loss_names_G['D_fake'] = loss_D_fake
 
         else:
+            assert 'G_GAN' in self.loss_names_G, 'G_GAN is not in loss_terms'
             loss_G_GAN = self.criterionGAN(pred_fake, True)
-            loss_G_GAN_Feat = self.GAN_matching_loss(pred_real, pred_fake, for_discriminator)
-            return [loss_G_GAN, loss_G_GAN_Feat]
+            self.loss_names_G['G_GAN'] = loss_G_GAN
+
+    def compute_feat_losses(self, netD, data_list):
+        assert 'G_GAN_Feat' in self.loss_names_G
+        fake, gt = data_list
+        pred_fake = netD(fake)
+        pred_real = netD(gt)
+        loss_G_GAN_Feat = self.GAN_matching_loss(pred_real, pred_fake)
+        self.loss_names_G['G_GAN_Feat'] = loss_G_GAN_Feat
+
 
     def compute_L1_losses(self, fake_image, gt_image):
+        assert 'L1' in self.loss_names_G
         loss_L1 = self.criterionL1(fake_image, gt_image)
-        return loss_L1 * 255 * self.weight['L1']
+        self.loss_names_G['L1'] = loss_L1 * 255 * self.weight['L1']
 
     def compute_VGG_losses(self, fake_image, gt_image):
-        loss_G_VGG = self.tensor(1).fill_(0)
         opt = self.opt
         if not opt.no_vgg:
             if type(fake_image) == list:
                 fake_image = fake_image[-1]
                 gt_image = gt_image[-1]
             loss_G_VGG = self.criterionVGG(fake_image, gt_image)
-        return loss_G_VGG * self.weight['VGG']
+            self.loss_names_G['VGG'] = loss_G_VGG * self.weight['VGG']
 
-    def GAN_matching_loss(self, pred_real, pred_fake, for_discriminator=False):
-        loss_G_GAN_Feat = self.tensor(1).fill_(0)
-        if not for_discriminator and not self.opt.no_GAN_feat:
+    def GAN_matching_loss(self, pred_real, pred_fake):
+        if not self.opt.no_GAN_feat:
             num_D = len(pred_fake)
             D_masks = 1.0 / num_D
             for i in range(num_D):
@@ -73,9 +91,9 @@ class LossCollector():
                     loss_G_GAN_Feat = loss_G_GAN_Feat + D_masks * loss
         return loss_G_GAN_Feat * self.weight['feat']
 
-    def loss_backward(self, losses, optimizer, scheduler, loss_id):
+    def loss_backward(self, loss_dict, optimizer, scheduler, loss_id):
         opt = self.opt
-        losses = [torch.mean(x) if not isinstance(x, int) else x for x in losses]
+        losses = [torch.mean(v) if not isinstance(v, int) else v for _, v in loss_dict]
         loss = sum(losses)
         optimizer.zero_grad()
         if opt.amp != 'O0':
