@@ -121,6 +121,7 @@ class Net(nn.Module):
         tail = [
             ops.Upsampler(opt.num_channels, opt.scale),
             nn.Conv2d(opt.num_channels, 3, 3, 1, 1, padding_mode=padding_mode),
+            nn.Tanh()
         ]
         self.head = nn.Sequential(*head)
         self.body = get_LRAB_group(n_channel=opt.num_channels, n_block=opt.num_blocks,
