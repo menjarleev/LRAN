@@ -45,7 +45,7 @@ class Solver:
 
         if not opt.test_only:
             self.train_loader = generate_loader('train', opt)
-            if 'GAN' in opt.loss_terms:
+            if 'gan' in opt.loss_terms.lower():
                 self.netD = netD.Net(opt).to(self.device)
                 Visualizer.log_print(opt, "# params of netD: {}".format(sum(map(lambda x: x.numel(), self.netD.parameters()))))
                 self.optimD = torch.optim.Adam(
@@ -64,7 +64,7 @@ class Solver:
         if not opt.test_only and opt.amp != 'O0':
             from apex import amp
             Visualizer.log_print(opt, 'use amp optimization')
-            if 'GAN' in opt.loss_terms:
+            if 'gan' in opt.loss_terms.lower():
                 [self.netG, self.netD], [self.optimG, self.optimD] = amp.initialize([self.netG, self.netD],
                                                                                     [self.optimG, self.optimD],
                                                                                     opt_level=opt.amp, num_losses=2)
@@ -112,16 +112,22 @@ class Solver:
             if aug == 'cutout':
                 SR, HR = SR*mask, HR*mask
 
-            loss_G, loss_D = [], []
-
+            GAN_fake, GAN_true = SR, HR
+            if opt.dis_res:
+                temp_LR = LR
+                if HR.size() != LR.size():
+                    scale = HR.size(2) // LR.size(2)
+                    temp_LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
+                GAN_fake = GAN_fake - temp_LR
+                GAN_true = GAN_true - temp_LR
             self.loss_collector.update_L1_weight(step)
 
-            if 'GAN' in opt.loss_terms:
-                self.loss_collector.compute_GAN_losses(self.netD, [SR, HR], for_discriminator=False)
-            if 'VGG' in opt.loss_terms:
+            if 'GAN'.lower() in opt.loss_terms.lower():
+                self.loss_collector.compute_GAN_losses(self.netD, [GAN_fake, GAN_true], for_discriminator=False)
+            if 'VGG'.lower() in opt.loss_terms.lower():
                 self.loss_collector.compute_VGG_losses(SR, HR)
             if 'feat' in opt.loss_terms:
-                self.loss_collector.compute_feat_losses(self.netD, [SR, HR])
+                self.loss_collector.compute_feat_losses(self.netD, [GAN_fake, GAN_true])
             if 'L1' in opt.loss_terms:
                 self.loss_collector.compute_L1_losses(SR, HR)
 
@@ -131,7 +137,7 @@ class Solver:
                 torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
 
             if 'GAN' in opt.loss_terms:
-                self.loss_collector.compute_GAN_losses(self.netD, [SR.detach(), HR], for_discriminator=True)
+                self.loss_collector.compute_GAN_losses(self.netD, [GAN_fake.detach(), GAN_true], for_discriminator=True)
                 self.loss_collector.loss_backward(self.loss_collector.loss_names_D, self.optimD, self.schedulerD, 1)
 
             loss_dict = {**self.loss_collector.loss_names_G, **self.loss_collector.loss_names_D}

@@ -9,7 +9,7 @@ class Net(torch.nn.Module):
         conv = get_layer('conv', opt.conv_layer_D)
         norm = get_layer('norm', opt.norm_D)
         self.n_layer = opt.n_layer_D
-        self.get_inter_feat = not opt.no_GAN_feat
+        self.get_inter_feat = 'feat' in opt.loss_terms.lower()
         padding_mode = opt.padding_D
         if opt.normalize:
             sequence = [[conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),

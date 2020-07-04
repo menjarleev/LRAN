@@ -47,7 +47,7 @@ class BaseDataset(torch.utils.data.Dataset):
             inp_scale = HQ.shape[0] // LQ.shape[0]
             HQ, LQ = util.crop(HQ, LQ, self.opt.patch_size, inp_scale)
             HQ, LQ = util.flip_and_rotate(HQ, LQ)
-        HQ, LQ = im2tensor([HQ, LQ], self.opt.rgb_range)
+        HQ, LQ = im2tensor([HQ, LQ])
         if self.opt.normalize:
             HQ, LQ = normalize([HQ, LQ])
         return HQ, LQ

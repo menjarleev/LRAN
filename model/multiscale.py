@@ -6,7 +6,7 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.num_D = opt.num_D
         self.n_layers = opt.n_layer_D
-        self.get_inter_feat = not opt.no_GAN_feat
+        self.get_inter_feat = 'feat' in opt.loss_terms.lower()
         ndf_max = 64
         ndf = opt.ndf
 

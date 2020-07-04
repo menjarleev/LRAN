@@ -12,7 +12,6 @@ def parse_args():
     parser.add_argument('--actv_G', type=str, default='LeakyReLU')
     parser.add_argument('--slope_G', type=float, default=1e-2)
     parser.add_argument('--padding_G', type=str, default='reflect')
-    parser.add_argument('--rgb_range', type=int, default=255)
     parser.add_argument('--actv_D', type=str, default='LeakyReLU')
     parser.add_argument('--slope_D', type=float, default=1e-2)
     parser.add_argument('--conv_layer_D', type=str, default='default')
@@ -57,11 +56,9 @@ def parse_args():
     parser.add_argument('--test_only', action='store_true')
     parser.add_argument('--save_result', action='store_true')
     parser.add_argument('--ckpt_root', type=str, default='./ckpt')
-    parser.add_argument('--no_GAN_feat', action='store_true')
     parser.add_argument('--lambda_feat', type=float, default=10.0)
     parser.add_argument('--lambda_L1', type=float, default=1.0)
     parser.add_argument('--L1_decay', type=str, nargs='*', default=[50000, 50000])
-    parser.add_argument('--no_vgg', action='store_true')
     parser.add_argument('--lambda_vgg', type=float, default=10.0)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--name', type=str, default='LRAN')
@@ -69,11 +66,12 @@ def parse_args():
     parser.add_argument('--print_mem', type=bool, default=True)
     parser.add_argument('--step_label', type=str, default='latest')
     parser.add_argument('--continue_train', action='store_true')
-    parser.add_argument('--loss_terms', type=str, default='GAN|feat|L1|VGG')
+    parser.add_argument('--loss_terms', type=str, default='GAN,feat,L1,VGG')
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--dir_HQ', type=str, default='x1')
     parser.add_argument('--dir_LQ', type=str, default='x4')
     parser.add_argument('--normalize', type=bool, default=False)
+    parser.add_argument('--dis_res', action='store_true')
 
     return parser.parse_args()
 
@@ -93,7 +91,6 @@ def make_template(opt):
         opt.decay = '200-400-600-800'
         opt.max_steps = 1000000
         opt.reduction = 16
-        opt.no_GAN_feat = True
 
     if "RCAN" in opt.netG:
         opt.num_groups = 10

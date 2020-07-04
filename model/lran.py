@@ -120,11 +120,10 @@ class Net(nn.Module):
                     nn.Conv2d(3*opt.scale**2, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
         else:
             head = [nn.Conv2d(3, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
-        tail = [
-            ops.Upsampler(opt.num_channels, opt.scale),
-            nn.Conv2d(opt.num_channels, 3, 3, 1, 1, padding_mode=padding_mode),
-            nn.Tanh()
-        ]
+        tail = [ops.Upsampler(opt.num_channels, opt.scale),
+                nn.Conv2d(opt.num_channels, 3, 3, 1, 1, padding_mode=padding_mode)]
+        if opt.normalize:
+            tail += [nn.Tanh()]
         self.head = nn.Sequential(*head)
         self.body = get_LRAB_group(n_channel=opt.num_channels, n_block=opt.num_blocks,
                                    LRAB_dict={}, res_scale=opt.res_scale, kernel_size=3,
