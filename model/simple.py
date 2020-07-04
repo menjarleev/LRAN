@@ -7,11 +7,14 @@ class Net(torch.nn.Module):
         input_nc = 3
         actv = get_layer('actv', opt.actv_D, opt.slope_D)
         conv = get_layer('conv', opt.conv_layer_D)
+        norm = get_layer('norm', opt.norm_D)
         self.n_layer = opt.n_layer_D
         self.get_inter_feat = not opt.no_GAN_feat
         padding_mode = opt.padding_D
 
-        sequence = [[ conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
+        sequence = [[MeanShift(1),
+                     conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
+                     norm(ndf),
                      actv()]]
         nf = ndf
         for n in range(1, self.n_layer):
@@ -19,12 +22,14 @@ class Net(torch.nn.Module):
             nf = min(nf * 2, 512)
             sequence += [[
                 conv(nf_prev, nf, kernel_size=3, stride=2, padding_mode=padding_mode),
+                norm(nf),
                 actv()
             ]]
         nf_prev = nf
         nf = min(nf * 2, 512)
         sequence += [[
             conv(nf_prev, nf, kernel_size=3, stride=1, padding_mode=padding_mode),
+            norm(nf),
             actv()
         ]]
         sequence += [[conv(nf, 1, kernel_size=3, stride=1, padding_mode=padding_mode)]]

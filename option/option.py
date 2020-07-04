@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument('--n_layer_D', type=int, default=3)
     parser.add_argument('--num_D', type=int, default=2)
     parser.add_argument('--gan_mode', type=str, default='ls', help='[ls|origin|hinge]')
+    parser.add_argument('--norm_D', type=str, default='instance')
 
     # augmentations
     parser.add_argument('--use_moa', action='store_true')
