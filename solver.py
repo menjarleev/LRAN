@@ -13,6 +13,7 @@ from tqdm import tqdm, trange
 import numpy as np
 from util.tensor_process import tensor2im
 from skimage.metrics import structural_similarity
+import json
 
 
 class Solver:
@@ -27,9 +28,20 @@ class Solver:
         self.save_dir = os.path.join(self.opt.ckpt_root, self.opt.name)
         os.makedirs(self.save_dir, exist_ok=True)
         torch.backends.cudnn.benchmark = True
+        self.data = dict()
+        self.data['best'] = {
+            'ssim': 0,
+            'psnr': 0,
+            'score': -10,
+            'step': 0,
+        }
+        self.data['latest'] = {
+            'ssim': 0,
+            'psnr': 0,
+            'score': -10,
+            'step': 0,
+        }
 
-        self.best_psnr, self.best_step = .0, 0
-        self.test_psnr, self.test_ssim, self.test_score, self.test_step = .0, .0, -10.0, 0
         if not opt.test_only:
             self.optimG = torch.optim.Adam(
                 self.netG.parameters(), opt.lr,
@@ -59,20 +71,6 @@ class Solver:
                                          'optimD': self.optimD,
                                          'schedulerD': self.schedulerD})
         self.validation_loader = generate_loader(opt, 'validation', opt.dataset)
-        if not opt.test_only and not opt.no_test_during_train:
-            self.test_dir = self.save_dir
-            os.makedirs(self.test_dir, exist_ok=True)
-            self.test_loader = generate_loader(opt, 'test', opt.dataset_test)
-            test_trace = os.path.join(self.test_dir, 'iter_{}.txt'.format(opt.test_name))
-            self.test_dict = {'netG': self.netG}
-            try:
-                self.test_step, self.test_psnr, self.test_ssim = np.loadtxt(test_trace, delimiter=',')
-                self.test_step = int(self.test_step)
-                self.test_score = 0.5 * self.test_psnr / 50 + 0.5 * (self.test_ssim - 0.4) / 0.6
-                Visualizer.log_print(opt, '========== current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {} for dataset {}'
-                                     .format(self.test_psnr, self.test_ssim, self.test_score, self.test_step, opt.test_name))
-            except:
-                Visualizer.log_print(opt, 'test result not found')
 
         if opt.continue_train or opt.pretrain:
             self.load(opt.pretrain, self.module_dict)
@@ -94,15 +92,36 @@ class Solver:
         self.t1 = time.time()
         start = 0
         if opt.continue_train:
-            iter_path = os.path.join(self.save_dir, 'iter_{}.txt'.format(opt.step_label))
-            if os.path.isfile(iter_path):
-                start, self.best_psnr, self.best_step = np.loadtxt(iter_path, delimiter=',')
-                start, self.best_step = int(start), int(self.best_step)
-                Visualizer.log_print(opt, '========== Resuming from iteration %d with best psnr %.2f @ step %d ========'
-                                     % (start, self.best_psnr, self.best_step))
+            json_path = os.path.join(self.save_dir, 'status.txt')
+            if os.path.isfile(json_path):
+                with open(json_path) as json_file:
+                    data = json.load(json_file)
+                # update self.data
+                self.data.update(data)
+                best = self.data['best']
+                latest = self.data['latest']
+                Visualizer.log_print(opt, '========== Resuming from iteration {}K with best psnr {:.2f} ssim {:.4f} score {:.4f} @ step {}K ========'
+                                     .format(latest['step'] // 1000, best['psnr'], best['ssim'], best['score'], best['step'] // 1000))
             else:
-                raise FileNotFoundError('iteration file at %s is not found' % iter_path)
+                raise FileNotFoundError('iteration file at %s is not found' % json_path)
 
+        if not opt.test_only and not opt.no_test_during_train:
+            self.test_dir = self.save_dir
+            os.makedirs(self.test_dir, exist_ok=True)
+            self.test_loader = generate_loader(opt, 'test', opt.dataset_test)
+            self.test_dict = {'netG': self.netG}
+            try:
+                test = self.data[opt.test_name]
+                Visualizer.log_print(opt, '========== [{}] current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K '
+                                     .format(opt.test_name, test['psnr'], test['ssim'], test['score'], test['step'] // 1000))
+            except:
+                Visualizer.log_print(opt, 'test result not found')
+                self.data[opt.test_name] = {
+                    'psnr': 0,
+                    'ssim': 0,
+                    'score': -10,
+                    'step': 0,
+                }
         for step in tqdm(range(start, opt.max_steps), desc='train', leave=False):
             try:
                 inputs = next(iters)
@@ -167,18 +186,23 @@ class Solver:
 
     def test_and_save(self, step):
         opt = self.opt
-        psnr, ssim = self.evaluate(self.test_loader, 'test', opt.test_name)
-        score = 0.5 * psnr / 50 + 0.5 * (ssim - 0.4) / 0.6
         step = step + 1
-        if score >= self.test_score:
-            self.test_psnr = psnr
-            self.test_ssim = ssim
-            self.test_step = step
-            self.test_score = score
+        psnr, ssim = self.evaluate(self.test_loader, 'test', opt.test_name)
+        score = util.calculate_score(psnr, ssim)
+        test = self.data[opt.test_name]
+        current_test = {
+            'psnr': psnr,
+            'ssim': ssim,
+            'score': score,
+            'step': step
+        }
+        if util.evaluate(current_test, test, opt.eval_metric):
+            self.data[opt.test_name] = current_test
             self.save(opt.test_name, self.test_dict)
-            self.save_log_iter(data_list=[step, self.test_psnr, self.test_ssim], label=opt.test_name, path=self.test_dir, step=step)
-        msg = '[test {}] psnr {:.2f} ssim {:.4f} score {:.2f} (best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K)'.format(
-            opt.test_name, psnr, ssim, score, self.test_psnr, self.test_ssim, self.test_score, self.test_step // 1000
+            self.save_log_iter(opt.test_name)
+        test = self.data[opt.test_name]
+        msg = '[test {}] psnr {:.2f} ssim {:.4f} score {:.2f} (best psnr {:.2f} ssim {:.4f} score {:.4f} @ step {}K)'.format(
+            opt.test_name, psnr, ssim, score, test['psnr'], test['ssim'], test['score'], test['step'] // 1000
         )
         Visualizer.log_print(opt, msg)
 
@@ -198,18 +222,28 @@ class Solver:
         eta = (self.t2 - self.t1) / opt.eval_steps * (max_steps - step) / 3600
 
         psnr, ssim = self.evaluate(self.validation_loader, 'validation', opt.dataset)
-
-        if psnr >= self.best_psnr:
-            self.best_psnr, self.best_step = psnr, step
+        score = util.calculate_score(psnr, ssim)
+        current_latest = {
+            'psnr': psnr,
+            'ssim': ssim,
+            'score': score,
+            'step': step
+        }
+        best = self.data['best']
+        if util.evaluate(current_latest, best, opt.eval_metric):
+            self.data['best'] = current_latest
             self.save('best', self.module_dict)
-            self.save_log_iter(data_list=[step, self.best_psnr, self.best_step], label='best', path=self.save_dir, step=step)
-
-        message = '[{}K/{}K] psnr: {:.2f} ssim: {:.4f} (best psnr: {:.2f} @ {}K step) \n' \
+            self.save_log_iter('best')
+        best = self.data['best']
+        self.data['latest'] = current_latest
+        message = '[{}K/{}K] psnr: {:.2f} ssim: {:.4f} score: {:.4f} (best psnr: {:.2f} ssim: {:.4f} score: {:.4f} @ {}K step) \n' \
                   '{}\n' \
-                  'LR:{}, ETA:{:.1f} hours'.format(step // 1000, max_steps // 1000, psnr, ssim, self.best_psnr, self.best_step // 1000, err_msg, curr_lr, eta)
+                  'LR:{}, ETA:{:.1f} hours'.format(step // 1000, max_steps // 1000, psnr, ssim, score,
+                                                   best['psnr'], best['ssim'], best['score'],
+                                                   best['step'] // 1000, err_msg, curr_lr, eta)
         Visualizer.log_print(opt, message)
         self.save('latest', self.module_dict)
-        self.save_log_iter(data_list=[step, self.best_psnr, self.best_step], label='latest', path=self.save_dir, step=step)
+        self.save_log_iter('latest')
         self.t1 = time.time()
 
 
@@ -242,7 +276,6 @@ class Solver:
             if opt.crop:
                 HR = HR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
                 SR = SR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
-
             if phase == 'validation':
                 psnr += util.calculate_psnr(HR, SR)
                 ssim += structural_similarity(HR, SR, data_range=255, multichannel=True, gaussian_weights=True, K1=0.01, K2=0.03)
@@ -256,10 +289,11 @@ class Solver:
 
         return psnr/len(data_loader), ssim/len(data_loader)
 
-    def save_log_iter(self, data_list, label, path, step):
-        iter_path = os.path.join(path, 'iter_{}.txt'.format(label))
-        np.savetxt(iter_path, data_list, delimiter=',')
-        Visualizer.log_print(self.opt, 'save %s iter file @ step %d' % (label, step))
+    def save_log_iter(self, label):
+        json_path = os.path.join(self.save_dir, 'status.txt')
+        with open(json_path, 'w') as json_file:
+            json.dump(self.data, json_file)
+        Visualizer.log_print(self.opt, 'update [{}] for status file'.format(label))
 
     def save(self, step_label, module_dict):
         def update_state_dict(dict):

@@ -56,3 +56,16 @@ def calculate_psnr(img1, img2):
     if mse == 0:
         return float("inf")
     return 20 * np.log10(255.0 / np.sqrt(mse))
+
+
+def calculate_score(psnr, ssim):
+    return 0.5 * psnr / 50 + 0.5 * (ssim - 0.4) / 0.6
+
+
+def evaluate(current_status, data_status, eval_metric):
+    current_val = current_status[eval_metric]
+    data_val = data_status[eval_metric]
+    if current_val >= data_val:
+        return True
+    else:
+        return False

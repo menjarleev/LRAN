@@ -12,6 +12,8 @@ def generate_loader(opt, phase, dataset_name):
         mname = importlib.import_module('data.div2k')
     elif 'AIMSR' in dataset_name:
         mname = importlib.import_module('data.aim')
+    elif 'Test' in dataset_name:
+        mname = importlib.import_module('data.test')
     elif 'Benchmark' in dataset_name:
         mname = importlib.import_module('data.benchmark')
     elif 'SR' in dataset_name:
@@ -24,8 +26,6 @@ def generate_loader(opt, phase, dataset_name):
         mname = importlib.import_module('data.benchmark')
         cname = 'BenchmarkJPEG'
 
-    elif 'Test' in dataset_name:
-        mname = importlib.import_module('data.test')
     else:
         raise ValueError('Unsupported datasetL {}'.format(opt.dataset))
 

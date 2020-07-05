@@ -80,6 +80,7 @@ def parse_args():
     parser.add_argument('--dataroot_test', type=str, default='/home/menjarleev/PycharmProjects/dataset/Set14')
     parser.add_argument('--dataset_test', type=str, default='TestSR')
     parser.add_argument('--test_range', type=str, default='inf')
+    parser.add_argument('--eval_metric', type=str, default='psnr')
 
     return parser.parse_args()
 
@@ -126,8 +127,9 @@ def make_template(opt):
     if "DN" in opt.dataset or "JPEG" in opt.dataset:
         opt.max_steps = 1000000
         opt.decay = "300-550-800"
+
     if 'AIM' in opt.dataset:
-        opt.image_range = '1-19000/1-10'
+        opt.image_range = '1-19000/1-30'
         opt.rgb_mean = (0.4294, 0.4267, 0.4021)
 
     if "RealSR" in opt.dataset:
