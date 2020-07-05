@@ -76,9 +76,9 @@ def parse_args():
     # test
     parser.add_argument('--no_test_during_train', action='store_true')
     parser.add_argument('--test_name', type=str, default='Set14')
-    parser.add_argument('--test_steps', type=int, default=10000)
+    parser.add_argument('--test_steps', type=int, default=5000)
     parser.add_argument('--dataroot_test', type=str, default='/home/menjarleev/PycharmProjects/dataset/Set14')
-    parser.add_argument('--dataset_test', type=str, default='Test')
+    parser.add_argument('--dataset_test', type=str, default='TestSR')
     parser.add_argument('--test_range', type=str, default='inf')
 
     return parser.parse_args()
@@ -120,24 +120,29 @@ def make_template(opt):
         opt.decay = "400"
 
     # training setup
+
+    opt.rgb_mean = (0.4488, 0.4371, 0.4040)
+
     if "DN" in opt.dataset or "JPEG" in opt.dataset:
         opt.max_steps = 1000000
         opt.decay = "300-550-800"
     if 'AIM' in opt.dataset:
-        opt.image_range = '1-19000/1-30'
+        opt.image_range = '1-19000/1-10'
+        opt.rgb_mean = (0.4294, 0.4267, 0.4021)
+
     if "RealSR" in opt.dataset:
         opt.patch_size *= opt.scale  # identical (LR, HR) resolution
 
+
     # evaluation setup
-    opt.crop = 6 if "DIV2K" in opt.dataset else 0
+    opt.crop = 6 if "DIV2K" or 'AIM' in opt.dataset else 0
     opt.crop += opt.scale if "SR" in opt.dataset else 4
-    opt.crop = 0 if 'AIMSR' in opt.dataset else opt.crop
 
     # note: we tested on color DN task
-    if "DIV2K" in opt.dataset or "DN" in opt.dataset or 'AIMSR' in opt.dataset:
-        opt.eval_y_only = False
-    else:
-        opt.eval_y_only = True
+    # if "DIV2K" in opt.dataset or "DN" in opt.dataset or 'AIM' in opt.dataset:
+    #     opt.eval_y_only = False
+    # else:
+    #     opt.eval_y_only = True
 
     # default augmentation policies
     if opt.use_moa:

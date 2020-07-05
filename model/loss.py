@@ -103,7 +103,7 @@ class VGGLoss(nn.Module):
         self.downsample = nn.AvgPool2d(2, stride=2, count_include_pad=False)
         self.normalize = opt.normalize
         if not self.normalize:
-            self.sub_mean = MeanShift(rgb_range=1)
+            self.sub_mean = MeanShift(rgb_range=1, rgb_mean=opt.rgb_mean)
 
     def compute_loss(self, x_vgg, y_vgg):
         loss = 0

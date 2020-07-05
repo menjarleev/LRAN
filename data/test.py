@@ -2,7 +2,7 @@ import data
 import glob
 import os
 
-class Test(data.BaseDataset):
+class TestSR(data.BaseDataset):
     def __init__(self, phase, opt):
         root = opt.dataroot_test
         self.scale = opt.scale
@@ -15,7 +15,7 @@ class Test(data.BaseDataset):
             s = slice(split[0]-1, split[1])
             self.HQ_paths, self.LQ_paths = self.HQ_paths[s], self.LQ_paths[s]
 
-        super(Test, self).__init__(phase, opt)
+        super(TestSR, self).__init__(phase, opt)
 
     def get_subdir(self):
         dir_HQ = 'x1'

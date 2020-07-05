@@ -169,6 +169,7 @@ class Solver:
         opt = self.opt
         psnr, ssim = self.evaluate(self.test_loader, 'test', opt.test_name)
         score = 0.5 * psnr / 50 + 0.5 * (ssim - 0.4) / 0.6
+        step = step + 1
         if score >= self.test_score:
             self.test_psnr = psnr
             self.test_ssim = ssim
@@ -238,15 +239,18 @@ class Solver:
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
                 io.imsave(save_path, SR)
-            if opt.crop and phase == 'validation':
+            if opt.crop:
                 HR = HR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
                 SR = SR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
-            if opt.eval_y_only:
+
+            if phase == 'validation':
+                psnr += util.calculate_psnr(HR, SR)
+                ssim += structural_similarity(HR, SR, data_range=255, multichannel=True, gaussian_weights=True, K1=0.01, K2=0.03)
+            else:
                 HR = util.rgb2ycbcr(HR)
                 SR = util.rgb2ycbcr(SR)
-
-            psnr += util.calculate_psnr(HR, SR)
-            ssim += structural_similarity(HR, SR, data_range=255, multichannel=True, gaussian_weights=True, K1=0.01, K2=0.03)
+                psnr += util.calculate_psnr(HR, SR)
+                ssim += structural_similarity(HR, SR, data_range=255, multichannel=False, gaussian_weights=True, K1=0.01, K2=0.03)
 
         self.netG.train()
 

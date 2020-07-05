@@ -15,7 +15,7 @@ class Net(torch.nn.Module):
                          norm(ndf),
                          actv()]]
         else:
-            sequence = [[MeanShift(1),
+            sequence = [[MeanShift(1, rgb_mean=opt.rgb_mean),
                          conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
                          norm(ndf),
                          actv()]]

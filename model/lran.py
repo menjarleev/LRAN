@@ -112,8 +112,8 @@ class Net(nn.Module):
         actv = ops.get_layer('actv', opt.actv_G, opt.slope_G)
         padding_mode = opt.padding_G
         if not opt.normalize:
-            self.sub_mean = ops.MeanShift(1)
-            self.add_mean = ops.MeanShift(1, sign=1)
+            self.sub_mean = ops.MeanShift(1, rgb_mean=opt.rgb_mean)
+            self.add_mean = ops.MeanShift(1, sign=1, rgb_mean=opt.rgb_mean)
         self.normalize = opt.normalize
         if 'cutblur' in opt.augs:
             head = [ops.DownBlock(opt.scale),

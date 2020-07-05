@@ -14,6 +14,16 @@ def generate_loader(opt, phase, dataset_name):
         mname = importlib.import_module('data.aim')
     elif 'Benchmark' in dataset_name:
         mname = importlib.import_module('data.benchmark')
+    elif 'SR' in dataset_name:
+        mname = importlib.import_module('data.benchmark')
+        cname = 'BenchmarkSR'
+    elif 'DN' in dataset_name:
+        mname = importlib.import_module('data.benchmark')
+        cname = 'BenchmarkDN'
+    elif 'JPEG' in dataset_name:
+        mname = importlib.import_module('data.benchmark')
+        cname = 'BenchmarkJPEG'
+
     elif 'Test' in dataset_name:
         mname = importlib.import_module('data.test')
     else:
@@ -51,9 +61,10 @@ class BaseDataset(torch.utils.data.Dataset):
             inp_scale = HQ.shape[0] // LQ.shape[0]
             HQ, LQ = util.crop(HQ, LQ, self.opt.patch_size, inp_scale)
             HQ, LQ = util.flip_and_rotate(HQ, LQ)
-        elif self.phase == 'test':
+        else:
+            h, w = LQ.shape[:-1]
             inp_scale = HQ.shape[0] // LQ.shape[0]
-            HQ, LQ = util.crop(HQ, LQ, self.opt.patch_size, inp_scale)
+            HQ = HQ[:inp_scale * h, :inp_scale * w]
         HQ, LQ = im2tensor([HQ, LQ])
         if self.opt.normalize:
             HQ, LQ = normalize([HQ, LQ])
