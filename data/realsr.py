@@ -13,7 +13,7 @@ class RealSR(data.BaseDataset):
 
         self.scale = opt.scale
 
-        subdir = "Train" if phase == "train" else "Test"
+        subdir = "Train" if phase == "train" else "Validation"
         path_canon_all = sorted(glob.glob(os.path.join(
             root, "Canon", subdir, str(self.scale), "*.png"
         )))

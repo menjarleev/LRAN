@@ -9,7 +9,6 @@ class Net(torch.nn.Module):
         conv = get_layer('conv', opt.conv_layer_D)
         norm = get_layer('norm', opt.norm_D)
         self.n_layer = opt.n_layer_D
-        self.get_inter_feat = 'feat' in opt.loss_terms.lower()
         padding_mode = opt.padding_D
         if opt.normalize:
             sequence = [[conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
@@ -38,23 +37,14 @@ class Net(torch.nn.Module):
         ]]
         sequence += [[conv(nf, 1, kernel_size=3, stride=1, padding_mode=padding_mode)]]
 
-        if self.get_inter_feat:
-            for n in range(len(sequence)):
-                setattr(self, 'model' + str(n), nn.Sequential(*sequence[n]))
-        else:
-            sequence_stream = []
-            for n in range(len(sequence)):
-                sequence_stream += sequence[n]
-            self.model = nn.Sequential(*sequence_stream)
+        for n in range(len(sequence)):
+            setattr(self, 'model' + str(n), nn.Sequential(*sequence[n]))
 
     def forward(self, input):
-        if self.get_inter_feat:
-            res = [input]
-            for n in range(self.n_layer + 2):
-                model = getattr(self, 'model' + str(n))
-                res.append(model(res[-1]))
-            return res[1:]
-        else:
-            return self.model(input)
+        res = [input]
+        for n in range(self.n_layer + 2):
+            model = getattr(self, 'model' + str(n))
+            res.append(model(res[-1]))
+        return res[1:]
 
 

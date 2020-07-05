@@ -73,10 +73,19 @@ def parse_args():
     parser.add_argument('--normalize', type=bool, default=False)
     parser.add_argument('--dis_res', action='store_true')
 
+    # test
+    parser.add_argument('--no_test_during_train', action='store_true')
+    parser.add_argument('--test_name', type=str, default='Set14')
+    parser.add_argument('--test_steps', type=int, default=10000)
+    parser.add_argument('--dataroot_test', type=str, default='/home/menjarleev/PycharmProjects/dataset/Set14')
+    parser.add_argument('--dataset_test', type=str, default='Test')
+    parser.add_argument('--test_range', type=str, default='inf')
+
     return parser.parse_args()
 
 def make_template(opt):
     opt.strict_load = opt.test_only
+    opt.loss_terms = opt.loss_terms.lower()
 
     # model
     if "EDSR" in opt.netG:

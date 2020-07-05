@@ -6,12 +6,16 @@ import torch
 import util
 from util.tensor_process import im2tensor, normalize
 
-def generate_loader(phase ,opt):
-    cname = opt.dataset.replace('_', '')
-    if "DIV2K" in opt.dataset:
+def generate_loader(opt, phase, dataset_name):
+    cname = dataset_name.replace('_', '')
+    if "DIV2K" in dataset_name:
         mname = importlib.import_module('data.div2k')
-    elif 'AIMSR' in opt.dataset:
+    elif 'AIMSR' in dataset_name:
         mname = importlib.import_module('data.aim')
+    elif 'Benchmark' in dataset_name:
+        mname = importlib.import_module('data.benchmark')
+    elif 'Test' in dataset_name:
+        mname = importlib.import_module('data.test')
     else:
         raise ValueError('Unsupported datasetL {}'.format(opt.dataset))
 
@@ -47,6 +51,9 @@ class BaseDataset(torch.utils.data.Dataset):
             inp_scale = HQ.shape[0] // LQ.shape[0]
             HQ, LQ = util.crop(HQ, LQ, self.opt.patch_size, inp_scale)
             HQ, LQ = util.flip_and_rotate(HQ, LQ)
+        elif self.phase == 'test':
+            inp_scale = HQ.shape[0] // LQ.shape[0]
+            HQ, LQ = util.crop(HQ, LQ, self.opt.patch_size, inp_scale)
         HQ, LQ = im2tensor([HQ, LQ])
         if self.opt.normalize:
             HQ, LQ = normalize([HQ, LQ])

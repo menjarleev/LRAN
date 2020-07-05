@@ -12,6 +12,7 @@ from subprocess import call
 from tqdm import tqdm, trange
 import numpy as np
 from util.tensor_process import tensor2im
+from skimage.metrics import structural_similarity
 
 
 class Solver:
@@ -20,32 +21,30 @@ class Solver:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.netG = netG.Net(opt).to(self.device)
         self.netD, self.optimG, self.optimD, self.schedulerG, self.schedulerD = [None] * 5
-        self.state_object_name = ['netG',
-                                  'schedulerG',
-                                  'optimG',
-                                  'netD',
-                                  'schedulerD',
-                                  'optimD']
+        self.module_dict = {'netG': self.netG}
         self.loss_collector = loss_collector.LossCollector(opt)
         Visualizer.log_print(opt, "# params of netG: {}".format(sum(map(lambda x: x.numel(), self.netG.parameters()))))
         self.save_dir = os.path.join(self.opt.ckpt_root, self.opt.name)
         os.makedirs(self.save_dir, exist_ok=True)
         torch.backends.cudnn.benchmark = True
 
-
-        self.optimG = torch.optim.Adam(
-            self.netG.parameters(), opt.lr,
-            betas=(0.9, 0.999), eps=1e-8
-        )
-
-        self.schedulerG = torch.optim.lr_scheduler.MultiStepLR(
-            self.optimG, [1000*int(d) for d in opt.decay.split('-')],
-            gamma=opt.gamma,
-        )
-
+        self.best_psnr, self.best_step = .0, 0
+        self.test_psnr, self.test_ssim, self.test_score, self.test_step = .0, .0, -10.0, 0
         if not opt.test_only:
-            self.train_loader = generate_loader('train', opt)
-            if 'gan' in opt.loss_terms.lower():
+            self.optimG = torch.optim.Adam(
+                self.netG.parameters(), opt.lr,
+                betas=(0.9, 0.999), eps=1e-8
+            )
+
+            self.schedulerG = torch.optim.lr_scheduler.MultiStepLR(
+                self.optimG, [1000*int(d) for d in opt.decay.split('-')],
+                gamma=opt.gamma,
+            )
+            self.module_dict.update({'optimG': self.optimG,
+                                     'schedulerG': self.schedulerG})
+
+            self.train_loader = generate_loader(opt, 'train', opt.dataset)
+            if 'gan' in opt.loss_terms:
                 self.netD = netD.Net(opt).to(self.device)
                 Visualizer.log_print(opt, "# params of netD: {}".format(sum(map(lambda x: x.numel(), self.netD.parameters()))))
                 self.optimD = torch.optim.Adam(
@@ -56,22 +55,38 @@ class Solver:
                     self.optimD, [1000*int(d) for d in opt.decay.split('-')],
                     gamma=opt.gamma,
                 )
-        self.test_loader = generate_loader('test', opt)
+                self.module_dict.update({'netD': self.netD,
+                                         'optimD': self.optimD,
+                                         'schedulerD': self.schedulerD})
+        self.validation_loader = generate_loader(opt, 'validation', opt.dataset)
+        if not opt.test_only and not opt.no_test_during_train:
+            self.test_dir = self.save_dir
+            os.makedirs(self.test_dir, exist_ok=True)
+            self.test_loader = generate_loader(opt, 'test', opt.dataset_test)
+            test_trace = os.path.join(self.test_dir, 'iter_{}.txt'.format(opt.test_name))
+            self.test_dict = {'netG': self.netG}
+            try:
+                self.test_step, self.test_psnr, self.test_ssim = np.loadtxt(test_trace, delimiter=',')
+                self.test_step = int(self.test_step)
+                self.test_score = 0.5 * self.test_psnr / 50 + 0.5 * (self.test_ssim - 0.4) / 0.6
+                Visualizer.log_print(opt, '========== current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {} for dataset {}'
+                                     .format(self.test_psnr, self.test_ssim, self.test_score, self.test_step, opt.test_name))
+            except:
+                Visualizer.log_print(opt, 'test result not found')
 
         if opt.continue_train or opt.pretrain:
-            self.load(opt.pretrain)
+            self.load(opt.pretrain, self.module_dict)
 
         if not opt.test_only and opt.amp != 'O0':
             from apex import amp
             Visualizer.log_print(opt, 'use amp optimization')
-            if 'gan' in opt.loss_terms.lower():
+            if 'gan' in opt.loss_terms:
                 [self.netG, self.netD], [self.optimG, self.optimD] = amp.initialize([self.netG, self.netD],
                                                                                     [self.optimG, self.optimD],
                                                                                     opt_level=opt.amp, num_losses=2)
             else:
                 self.netG, self.optimG = amp.initialize(self.netG, self.optimG, opt_level=opt.amp, num_losses=1)
         self.t1, self.t2 = None, None
-        self.best_psnr, self.best_step = 0, 0
 
     def fit(self):
         opt = self.opt
@@ -79,7 +94,7 @@ class Solver:
         self.t1 = time.time()
         start = 0
         if opt.continue_train:
-            iter_path = os.path.join(self.save_dir, 'iter_step{}.txt'.format(opt.step_label))
+            iter_path = os.path.join(self.save_dir, 'iter_{}.txt'.format(opt.step_label))
             if os.path.isfile(iter_path):
                 start, self.best_psnr, self.best_step = np.loadtxt(iter_path, delimiter=',')
                 start, self.best_step = int(start), int(self.best_step)
@@ -120,15 +135,17 @@ class Solver:
                     temp_LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
                 GAN_fake = GAN_fake - temp_LR
                 GAN_true = GAN_true - temp_LR
-            self.loss_collector.update_L1_weight(step)
 
-            if 'GAN'.lower() in opt.loss_terms.lower():
+            if not 'l1' == opt.loss_terms:
+                self.loss_collector.update_L1_weight(step)
+
+            if 'gan' in opt.loss_terms:
                 self.loss_collector.compute_GAN_losses(self.netD, [GAN_fake, GAN_true], for_discriminator=False)
-            if 'VGG'.lower() in opt.loss_terms.lower():
+            if 'vgg' in opt.loss_terms:
                 self.loss_collector.compute_VGG_losses(SR, HR)
             if 'feat' in opt.loss_terms:
                 self.loss_collector.compute_feat_losses(self.netD, [GAN_fake, GAN_true])
-            if 'L1' in opt.loss_terms:
+            if 'l1' in opt.loss_terms:
                 self.loss_collector.compute_L1_losses(SR, HR)
 
             self.loss_collector.loss_backward(self.loss_collector.loss_names_G, self.optimG, self.schedulerG, 0)
@@ -136,7 +153,7 @@ class Solver:
             if opt.gclip > 0:
                 torch.nn.utils.clip_grad_value_(self.netG.parameters(), opt.gclip)
 
-            if 'GAN' in opt.loss_terms:
+            if 'gan' in opt.loss_terms:
                 self.loss_collector.compute_GAN_losses(self.netD, [GAN_fake.detach(), GAN_true], for_discriminator=True)
                 self.loss_collector.loss_backward(self.loss_collector.loss_names_D, self.optimD, self.schedulerD, 1)
 
@@ -144,6 +161,26 @@ class Solver:
 
             if (step + 1) % opt.eval_steps == 0 or opt.debug:
                 self.summary_and_save(step, loss_dict)
+
+            if (not opt.no_test_during_train and (step + 1) % opt.test_steps == 0) or opt.debug:
+                self.test_and_save(step)
+
+    def test_and_save(self, step):
+        opt = self.opt
+        psnr, ssim = self.evaluate(self.test_loader, 'test', opt.test_name)
+        score = 0.5 * psnr / 50 + 0.5 * (ssim - 0.4) / 0.6
+        if score >= self.test_score:
+            self.test_psnr = psnr
+            self.test_ssim = ssim
+            self.test_step = step
+            self.test_score = score
+            self.save(opt.test_name, self.test_dict)
+            self.save_log_iter(data_list=[step, self.test_psnr, self.test_ssim], label=opt.test_name, path=self.test_dir, step=step)
+        msg = '[test {}] psnr {:.2f} ssim {:.4f} score {:.2f} (best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K)'.format(
+            opt.test_name, psnr, ssim, score, self.test_psnr, self.test_ssim, self.test_score, self.test_step // 1000
+        )
+        Visualizer.log_print(opt, msg)
+
 
     def summary_and_save(self, step, loss_dict):
         opt = self.opt
@@ -158,33 +195,36 @@ class Solver:
         curr_lr = self.schedulerG.get_lr()[0]
         step, max_steps = step + 1, self.opt.max_steps
         eta = (self.t2 - self.t1) / opt.eval_steps * (max_steps - step) / 3600
-        if opt.debug:
-            psnr = 0
-        else:
-            psnr = self.evaluate()
+
+        psnr, ssim = self.evaluate(self.validation_loader, 'validation', opt.dataset)
 
         if psnr >= self.best_psnr:
-           self.best_psnr, self.best_step = psnr, step
-           self.save(step, self.best_psnr, self.best_step, 'best')
-        message = '[{}K/{}K] psnr: {:.2f} (best psnr: {:.2f} @ {}K step) \n' \
+            self.best_psnr, self.best_step = psnr, step
+            self.save('best', self.module_dict)
+            self.save_log_iter(data_list=[step, self.best_psnr, self.best_step], label='best', path=self.save_dir, step=step)
+
+        message = '[{}K/{}K] psnr: {:.2f} ssim: {:.4f} (best psnr: {:.2f} @ {}K step) \n' \
                   '{}\n' \
-                  'LR:{}, ETA:{:.1f} hours \n'.format(step // 1000, max_steps // 1000, psnr, self.best_psnr, self.best_step // 1000, err_msg, curr_lr, eta)
+                  'LR:{}, ETA:{:.1f} hours'.format(step // 1000, max_steps // 1000, psnr, ssim, self.best_psnr, self.best_step // 1000, err_msg, curr_lr, eta)
         Visualizer.log_print(opt, message)
-        self.save(step, self.best_psnr, self.best_step, 'latest')
+        self.save('latest', self.module_dict)
+        self.save_log_iter(data_list=[step, self.best_psnr, self.best_step], label='latest', path=self.save_dir, step=step)
         self.t1 = time.time()
 
+
     @torch.no_grad()
-    def evaluate(self):
+    def evaluate(self, data_loader, phase, dataset_name):
         opt = self.opt
         self.netG.eval()
 
         if opt.save_result:
-            save_root = os.path.join(opt.ckpt_root, opt.name, 'output', opt.dataset)
+            save_root = os.path.join(self.save_dir, 'output', dataset_name)
             os.makedirs(save_root, exist_ok=True)
 
         psnr = 0
-        tqdm_test = tqdm(self.test_loader, desc='test', leave=False)
-        for i, inputs in enumerate(tqdm_test):
+        ssim = 0
+        tqdm_data_loader = tqdm(data_loader, desc=phase, leave=False)
+        for i, inputs in enumerate(tqdm_data_loader):
             HR = inputs[0].to(self.device)
             LR = inputs[1].to(self.device)
 
@@ -198,41 +238,40 @@ class Solver:
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
                 io.imsave(save_path, SR)
-            if opt.crop:
+            if opt.crop and phase == 'validation':
                 HR = HR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
                 SR = SR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
             if opt.eval_y_only:
                 HR = util.rgb2ycbcr(HR)
                 SR = util.rgb2ycbcr(SR)
+
             psnr += util.calculate_psnr(HR, SR)
+            ssim += structural_similarity(HR, SR, data_range=255, multichannel=True, gaussian_weights=True, K1=0.01, K2=0.03)
 
         self.netG.train()
 
-        return psnr/len(self.test_loader)
+        return psnr/len(data_loader), ssim/len(data_loader)
 
-    def save(self, step, best_psnr, best_step, step_label):
-        def update_stat_dict(state_object, state_name):
-            if state_object is not None:
-                if 'net' in state_name:
-                    state_dict.update({state_name: state_object.cpu().state_dict()})
+    def save_log_iter(self, data_list, label, path, step):
+        iter_path = os.path.join(path, 'iter_{}.txt'.format(label))
+        np.savetxt(iter_path, data_list, delimiter=',')
+        Visualizer.log_print(self.opt, 'save %s iter file @ step %d' % (label, step))
+
+    def save(self, step_label, module_dict):
+        def update_state_dict(dict):
+            for k, v in dict.items():
+                if 'net' in k:
+                    state_dict.update({k: v.cpu().state_dict()})
                     if torch.cuda.is_available():
-                        state_object.to(self.device)
+                        v.to(self.device)
                 else:
-                    state_dict.update({state_name: state_object.state_dict()})
-        opt = self.opt
+                    state_dict.update({k: v.state_dict()})
         state_dict = dict()
-        state_objects = [self.netG, self.schedulerG, self.optimG]
-        if 'GAN' in opt.loss_terms:
-            state_objects += [self.netD, self.schedulerD, self.optimD]
-        for obj, name in zip(state_objects, self.state_object_name):
-            update_stat_dict(obj, name)
-        state_path = os.path.join(self.save_dir, 'state_step{}.pth'.format(step_label))
+        update_state_dict(module_dict)
+        state_path = os.path.join(self.save_dir, 'state_{}.pth'.format(step_label))
         torch.save(state_dict, state_path)
-        iter_path = os.path.join(self.save_dir, 'iter_step{}.txt'.format(step_label))
-        np.savetxt(iter_path, (step, best_psnr, best_step), delimiter=',')
-        Visualizer.log_print(opt, 'save %s state at step %d' % (step_label, step))
 
-    def load(self, pretrain):
+    def load(self, pretrain, module_dict):
         def load_network(network, pretrained_dict, name):
             opt = self.opt
             try:
@@ -270,25 +309,18 @@ class Solver:
         if pretrain:
             state_path = pretrain
         else:
-            label = 'latest' if opt.continue_train else opt.step_label
-            state_path = os.path.join(self.save_dir, 'state_step{}.pth'.format(label))
+            label = opt.step_label
+            state_path = os.path.join(self.save_dir, 'state_{}.pth'.format(label))
         if not os.path.isfile(state_path):
             Visualizer.log_print(opt, 'state file store in %s is not found' % state_path)
             return
         state = torch.load(state_path)
-        state_objects = [self.netG]
-        if not opt.test_only:
-            state_objects += [self.schedulerG, self.optimG]
-            if 'GAN' in opt.loss_terms:
-                state_objects += [self.netD, self.schedulerD, self.optimD]
-        for obj, name in zip(state_objects, self.state_object_name):
-            if 'net' in name and name in state:
-                load_network(obj, state[name], name)
-                obj.cuda()
-            elif name in state:
-                load_other(obj, state[name], name)
+        for k, v in module_dict.items():
+            if 'net' in k:
+                load_network(v, state[k], k)
+                v.cuda()
             else:
-                Visualizer.log_print(opt, '%s is not found in state' % name)
+                load_other(v, state[k], k)
 
 
 

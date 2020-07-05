@@ -7,18 +7,18 @@ class LossCollector():
         self.tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
         self.loss_names_G = dict()
         self.loss_names_D = dict()
-        if 'gan' in opt.loss_terms.lower():
+        if 'gan' in opt.loss_terms:
             self.criterionGAN = GANLoss(opt.gan_mode, tensor=self.tensor)
             self.loss_names_G['G_GAN'] = 0
             self.loss_names_D['D_real'] = 0
             self.loss_names_D['D_fake'] = 0
-        if 'feat' in opt.loss_terms.lower():
+        if 'feat' in opt.loss_terms:
             self.criterionFeat = torch.nn.L1Loss()
             self.loss_names_G['G_GAN_Feat'] = 0
-        if 'l1' in opt.loss_terms.lower():
+        if 'l1' in opt.loss_terms:
             self.criterionL1 = torch.nn.L1Loss()
             self.loss_names_G['L1'] = 0
-        if 'vgg' in opt.loss_terms.lower():
+        if 'vgg' in opt.loss_terms:
             self.criterionVGG = VGGLoss(opt).to(self.device)
             self.loss_names_G['VGG'] = 0
 

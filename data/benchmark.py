@@ -8,12 +8,13 @@ class BenchmarkSR(data.BaseDataset):
         self.scale = opt.scale
         dir_HQ, dir_LQ = self.get_subdir()
         self.HQ_paths = sorted(glob.glob(os.path.join(root, dir_HQ, '*.png')))
+        self.LQ_paths = sorted(glob.glob(os.path.join(root, dir_LQ, '*.png')))
 
         super(BenchmarkSR, self).__init__(phase, opt)
 
     def get_subdir(self):
-        dir_HQ = 'HR'
-        dir_LQ = 'X{}'.format(self.scale)
+        dir_HQ = 'x1'
+        dir_LQ = 'x{}'.format(self.scale)
         return dir_HQ, dir_LQ
 
 class BenchmarkDN(BenchmarkSR):
