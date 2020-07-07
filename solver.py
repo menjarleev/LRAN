@@ -102,6 +102,7 @@ class Solver:
                 latest = self.data['latest']
                 Visualizer.log_print(opt, '========== Resuming from iteration {}K with best psnr {:.2f} ssim {:.4f} score {:.4f} @ step {}K ========'
                                      .format(latest['step'] // 1000, best['psnr'], best['ssim'], best['score'], best['step'] // 1000))
+                start = latest['step'] if opt.step_label == 'latest' else best['step']
             else:
                 raise FileNotFoundError('iteration file at %s is not found' % json_path)
 
@@ -201,7 +202,7 @@ class Solver:
             self.save(opt.test_name, self.test_dict)
             self.save_log_iter(opt.test_name)
         test = self.data[opt.test_name]
-        msg = '[test {}] psnr {:.2f} ssim {:.4f} score {:.2f} (best psnr {:.2f} ssim {:.4f} score {:.4f} @ step {}K)'.format(
+        msg = '[test {}] psnr {:.2f} ssim {:.4f} score {:.4f} (best psnr {:.2f} ssim {:.4f} score {:.4f} @ step {}K)'.format(
             opt.test_name, psnr, ssim, score, test['psnr'], test['ssim'], test['score'], test['step'] // 1000
         )
         Visualizer.log_print(opt, msg)

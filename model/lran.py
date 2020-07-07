@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from model import ops
+from torchvision.models import vgg19
 
 class SpatialAttention(nn.Module):
     def __init__(self, num_block, kernel_size=7, padding_mode='reflect'):
@@ -58,7 +59,7 @@ class RALayer(nn.Module):
     def forward(self, block):
         channel_map = self.channel_attention(block)
         spatial_map = self.spatial_attention(block)
-        x = 0
+        x = block[-1]
         for b_i, c_i, s_i in zip(block, channel_map, spatial_map):
             x_i = c_i * b_i
             x_i = s_i * x_i
@@ -115,11 +116,22 @@ class Net(nn.Module):
             self.sub_mean = ops.MeanShift(1, rgb_mean=opt.rgb_mean)
             self.add_mean = ops.MeanShift(1, sign=1, rgb_mean=opt.rgb_mean)
         self.normalize = opt.normalize
+        input_nc = 3
+        if opt.use_vgg:
+            vgg_feat = vgg19(pretrained=True).features
+            self.slice1 = nn.Sequential()
+            for x in range(2):
+                self.slice1.add_module(str(x + 1), vgg_feat[x])
+            input_nc += 64
+            for param in self.slice1.parameters():
+                param.requires_grad = False
+        self.use_vgg = opt.use_vgg
         if 'cutblur' in opt.augs:
             head = [ops.DownBlock(opt.scale),
                     nn.Conv2d(3*opt.scale**2, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
         else:
-            head = [nn.Conv2d(3, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
+            head = [nn.Conv2d(input_nc, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
+        assert ('cutblur' in opt.augs and opt.use_vgg) is False, 'can choose either vgg feat or cutblur'
         tail = [ops.Upsampler(opt.num_channels, opt.scale),
                 nn.Conv2d(opt.num_channels, 3, 3, 1, 1, padding_mode=padding_mode)]
         if opt.normalize:
@@ -134,6 +146,9 @@ class Net(nn.Module):
     def forward(self, x):
         if not self.normalize:
             x = self.sub_mean(x)
+        if self.use_vgg:
+            feat1 = self.slice1(x)
+            x = torch.cat([x, feat1], dim=1)
         x = self.head(x)
         x, _ = self.body(x)
         x = self.tail(x)

@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument('--num_D', type=int, default=2)
     parser.add_argument('--gan_mode', type=str, default='ls', help='[ls|origin|hinge]')
     parser.add_argument('--norm_D', type=str, default='instance')
+    parser.add_argument('--use_vgg', action='store_true')
 
     # augmentations
     parser.add_argument('--use_moa', action='store_true')
@@ -43,7 +44,7 @@ def parse_args():
 
     # training setups
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--decay', type=str, default='200-400-600')
+    parser.add_argument('--decay', type=str, default='150-250-350')
     parser.add_argument('--gamma', type=int, default=0.5)
     parser.add_argument('--patch_size', type=int, default=48)
     parser.add_argument('--batch_size', type=int, default=16)
@@ -58,7 +59,7 @@ def parse_args():
     parser.add_argument('--ckpt_root', type=str, default='./ckpt')
     parser.add_argument('--lambda_feat', type=float, default=10.0)
     parser.add_argument('--lambda_L1', type=float, default=1.0)
-    parser.add_argument('--L1_decay', type=str, nargs='*', default=[50000, 50000])
+    parser.add_argument('--L1_decay', type=str, nargs='*', default=[100000, 700000])
     parser.add_argument('--lambda_vgg', type=float, default=10.0)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--name', type=str, default='LRAN')
@@ -98,8 +99,8 @@ def make_template(opt):
         opt.num_blocks = 64
         opt.num_channels = 64
         opt.res_scale = 1.0
-        opt.decay = '200-400-600-800'
-        opt.max_steps = 1000000
+        opt.decay = '150-250-350-450'
+        opt.max_steps = 500000
         opt.reduction = 16
 
     if "RCAN" in opt.netG:
@@ -131,13 +132,15 @@ def make_template(opt):
     if 'AIM' in opt.dataset:
         opt.image_range = '1-19000/1-30'
         opt.rgb_mean = (0.4294, 0.4267, 0.4021)
+    if 'DIV2k' in opt.dataset:
+        opt.decay = "200-400-600-800"
 
     if "RealSR" in opt.dataset:
         opt.patch_size *= opt.scale  # identical (LR, HR) resolution
 
 
     # evaluation setup
-    opt.crop = 6 if "DIV2K" or 'AIM' in opt.dataset else 0
+    opt.crop = 6
     opt.crop += opt.scale if "SR" in opt.dataset else 4
 
     # note: we tested on color DN task

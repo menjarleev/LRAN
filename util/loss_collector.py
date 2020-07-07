@@ -27,11 +27,12 @@ class LossCollector():
                        'VGG': opt.lambda_vgg}
 
     def update_L1_weight(self, step):
-        L1_decay = self.opt.L1_decay
+        opt = self.opt
+        L1_decay = opt.L1_decay
         if step + 1 < L1_decay[0]:
-            return
+            self.weight['L1'] = opt.lambda_L1
         elif sum(L1_decay) > step + 1 >= L1_decay[0]:
-            self.weight['L1'] = self.weight['L1'] * (1 - (step + 1 - L1_decay[0]) / L1_decay[1])
+            self.weight['L1'] = round(opt.lambda_L1 * (1 - (step + 1 - L1_decay[0]) / L1_decay[1]), 4)  # round to avoid overflow
         else:
             self.weight['L1'] = 0
 
