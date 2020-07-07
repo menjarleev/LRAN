@@ -132,8 +132,10 @@ def make_template(opt):
     if 'AIM' in opt.dataset:
         opt.image_range = '1-19000/1-30'
         opt.rgb_mean = (0.4294, 0.4267, 0.4021)
-    if 'DIV2k' in opt.dataset:
+
+    if 'DIV2K' in opt.dataset:
         opt.decay = "200-400-600-800"
+        opt.max_steps = 1000000
 
     if "RealSR" in opt.dataset:
         opt.patch_size *= opt.scale  # identical (LR, HR) resolution

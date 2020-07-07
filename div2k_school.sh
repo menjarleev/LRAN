@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python main.py --save_result --dataset_root /home/PycharmProjects/lhuo9710/dataset/DIV2K/train --dataroot_test /home/lhuo9710/PycharmProjects/dataset/Set14 --name div2k --loss_term l1,vgg,gan --use_vgg --dataset DIV2K_SR
+python main.py --save_result --dataset_root /home/lhuo9710/PycharmProjects/dataset/DIV2K/train --dataroot_test /home/lhuo9710/PycharmProjects/dataset/Set14 --name div2k --loss_term l1,vgg,gan --use_vgg --dataset DIV2K_SR
