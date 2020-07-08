@@ -59,15 +59,16 @@ class RALayer(nn.Module):
     def forward(self, block):
         channel_map = self.channel_attention(block)
         spatial_map = self.spatial_attention(block)
-        x = 0
+        x = None
         for b_i, c_i, s_i in zip(block, channel_map, spatial_map):
             x_i = c_i * b_i
             x_i = s_i * x_i
-            x = x + x_i
+            x = x_i if x is None else torch.cat([x_i, x], dim=1)
         return x
 
 
-def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, reduction=16, actv=nn.ReLU, padding_mode='reflect'):
+def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, reduction=16,  actv=nn.ReLU,
+                   padding_mode='reflect', bn_reduction=4, num_submodule=2):
     assert type(LRAB_dict) == dict
     if n_block & (n_block - 1) == 0 and n_block != 0:
         class Module(nn.Module):
@@ -76,7 +77,7 @@ def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, re
                 Module.__name__ = 'LRABx{}'.format(num_block)
                 sub_num_block = num_block // 2
                 submodule_name = 'LRABx{}'.format(sub_num_block)
-                for i in range(2):
+                for i in range(num_submodule):
                     if sub_num_block == 1:
                         submodule = ops.ResBlock(num_channel, res_scale, activation=actv, padding_mode=padding_mode, res_out=True)
                     elif submodule_name in class_dict:
@@ -84,23 +85,25 @@ def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, re
                     else:
                         submodule = get_LRAB_group(num_channel, sub_num_block, class_dict)
                     setattr(self, 'submodule' + str(i + 1), submodule)
-                self.res_module = nn.Sequential(nn.Conv2d(num_channel, num_channel, 3, 1, 1, padding_mode=padding_mode),
+                bottleneck = bn_reduction
+                self.res_attention = RALayer(num_channel, num_submodule, kernel_size=kernel_size, reduction=reduction, padding_mode=padding_mode)
+                self.fusion = nn.Sequential(nn.Conv2d(num_channel * num_submodule, num_channel // bottleneck, 3, 1, 1, padding_mode=padding_mode),
                                                 actv(),
-                                                nn.Conv2d(num_channel, num_channel, 3, 1, 1, padding_mode=padding_mode))
-                self.res_attention = RALayer(num_channel, 3, kernel_size=kernel_size, reduction=reduction, padding_mode=padding_mode)
+                                                nn.Conv2d(num_channel // bottleneck, num_channel, 3, 1, 1, padding_mode=padding_mode))
+                self.num_submodule = num_submodule
 
             def forward(self, feat):
                 res_list = []
                 x = feat
-                for i in range(2):
+                for i in range(self.num_submodule):
                     submodule_i = getattr(self, 'submodule' + str(i + 1))
                     x, x_res = submodule_i(x)
-                    res_list = res_list + [x_res]
-                last_res = self.res_module(x)
-                res_list = res_list + [last_res]
-                res_agg = self.res_attention(res_list)
-                out = feat + res_agg
-                return out, res_agg
+                    res_list += [x_res]
+                res_attn = self.res_attention(res_list)
+                res = self.fusion(res_attn)
+                out = feat + res
+                return out, res
+
         LRAB_class = Module
         LRAB_dict['LRABx{}'.format(n_block)] = LRAB_class
         return LRAB_class(n_channel, num_block=n_block, class_dict=LRAB_dict)
@@ -139,7 +142,8 @@ class Net(nn.Module):
         self.head = nn.Sequential(*head)
         self.body = get_LRAB_group(n_channel=opt.num_channels, n_block=opt.num_blocks,
                                    LRAB_dict={}, res_scale=opt.res_scale, kernel_size=3,
-                                   reduction=opt.reduction, actv=actv, padding_mode=padding_mode)
+                                   reduction=opt.reduction, actv=actv, padding_mode=padding_mode,
+                                   bn_reduction=opt.bn_reduction, num_submodule=opt.num_submodule)
         self.tail = nn.Sequential(*tail)
         self.opt = opt
 
