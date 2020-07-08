@@ -59,7 +59,7 @@ def parse_args():
     parser.add_argument('--ckpt_root', type=str, default='./ckpt')
     parser.add_argument('--lambda_feat', type=float, default=10.0)
     parser.add_argument('--lambda_L1', type=float, default=1.0)
-    parser.add_argument('--L1_decay', type=str, nargs='*', default=[100000, 700000])
+    parser.add_argument('--L1_decay', type=str, nargs='*', default=[])
     parser.add_argument('--lambda_vgg', type=float, default=10.0)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--name', type=str, default='LRAN')

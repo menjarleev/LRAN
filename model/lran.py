@@ -59,7 +59,7 @@ class RALayer(nn.Module):
     def forward(self, block):
         channel_map = self.channel_attention(block)
         spatial_map = self.spatial_attention(block)
-        x = block[-1]
+        x = 0
         for b_i, c_i, s_i in zip(block, channel_map, spatial_map):
             x_i = c_i * b_i
             x_i = s_i * x_i

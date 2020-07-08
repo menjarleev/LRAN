@@ -156,7 +156,7 @@ class Solver:
                 GAN_fake = GAN_fake - temp_LR
                 GAN_true = GAN_true - temp_LR
 
-            if not 'l1' == opt.loss_terms:
+            if len(opt.L1_decay) >= 1:
                 self.loss_collector.update_L1_weight(step)
 
             if 'gan' in opt.loss_terms:
