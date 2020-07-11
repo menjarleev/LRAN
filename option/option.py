@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--dir_HQ', type=str, default='x1')
     parser.add_argument('--dir_LQ', type=str, default='x4')
-    parser.add_argument('--normalize', type=bool, default=False)
+    parser.add_argument('--normalize', action='store_true')
     parser.add_argument('--dis_res', action='store_true')
 
     # test
@@ -101,7 +101,7 @@ def make_template(opt):
         opt.res_scale = 1.0
         opt.decay = '150-250-350-450'
         opt.max_steps = 500000
-        opt.reduction = 16
+        opt.reduction = 8
 
     if "RCAN" in opt.netG:
         opt.num_groups = 10

@@ -3,67 +3,53 @@ import torch.nn as nn
 from model import ops
 from torchvision.models import vgg19
 
-class SpatialAttention(nn.Module):
-    def __init__(self, num_block, kernel_size=7, padding_mode='reflect'):
-        super(SpatialAttention, self).__init__()
-        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
-        paddding = 3 if kernel_size == 7 else 1
-        self.conv = nn.Conv2d(num_block*2, num_block, kernel_size=kernel_size, padding=paddding, padding_mode=padding_mode, bias=False)
-        self.sigmoid = nn.Sigmoid()
-        self.num_block = num_block
-
-    def forward(self, block):
-        assert type(block) == list and len(block) == self.num_block, 'input must be list and length %s' % str(self.num_block)
-        x = None
-        for b_i in block:
-            avg_out = torch.mean(b_i, dim=1, keepdim=True)
-            max_out, _ = torch.max(b_i, dim=1, keepdim=True)
-            x_i = torch.cat([avg_out, max_out], dim=1)
-            x = x_i if x is None else torch.cat([x, x_i], dim=1)
-        x = self.conv(x)
-        x = self.sigmoid(x)
-        return torch.chunk(x, self.num_block, dim=1)
-
-
 class ChannelAttention(nn.Module):
-    def __init__(self, num_channel, num_block, reduction=16):
+    def __init__(self, in_planes, ratio=4, actv=nn.ReLU, padding_mode='reflect'):
         super(ChannelAttention, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
-        total_channel = num_channel * num_block
-        inter_channel = max(1, total_channel // reduction)
-        self.fc1 = nn.Conv2d(total_channel, inter_channel, kernel_size=1, bias=False)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Conv2d(inter_channel, total_channel, kernel_size=1, bias=False)
+        inter_channel = max(1, in_planes // ratio)
+        self.fc1 = nn.Conv2d(in_planes, inter_channel, 1, bias=False, padding_mode=padding_mode)
+        self.actv = actv()
+        self.fc2 = nn.Conv2d(inter_channel, in_planes, 1, bias=False, padding_mode=padding_mode)
         self.sigmoid = nn.Sigmoid()
-        self.num_block = num_block
 
-    def forward(self, block):
-        assert type(block) == list and len(block) == self.num_block, 'input must be list and length %s' % str(self.num_block)
-        x = None
-        for b_i in block:
-            x = b_i if x is None else torch.cat([x, b_i], dim=1)
-        avg_out = self.fc2(self.relu(self.fc1(self.avg_pool(x))))
-        max_out = self.fc2(self.relu(self.fc1(self.max_pool(x))))
-        x = avg_out + max_out
-        x = self.sigmoid(x)
-        return torch.chunk(x, self.num_block, dim=1)
+    def forward(self, x):
+        avg_out = self.fc2(self.actv(self.fc1(self.avg_pool(x))))
+        max_out = self.fc2(self.actv(self.fc1(self.max_pool(x))))
+        out = avg_out + max_out
+        return self.sigmoid(out)
+
+
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7, padding_mode='reflect'):
+        super(SpatialAttention, self).__init__()
+        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if kernel_size == 7 else 1
+        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=padding, padding_mode=padding_mode, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        x = self.conv1(x)
+        return self.sigmoid(x)
 
 
 class RALayer(nn.Module):
-    def __init__(self, num_channels, num_block, kernel_size=7, reduction=16, padding_mode='reflect'):
+    def __init__(self, num_channels, num_block, kernel_size=7, reduction=16, padding_mode='reflect', actv=nn.ReLU):
         super(RALayer, self).__init__()
-        self.channel_attention = ChannelAttention(num_channels, num_block, reduction)
-        self.spatial_attention = SpatialAttention(num_block, kernel_size=kernel_size, padding_mode=padding_mode)
+        self.conv1 = nn.Conv2d(num_channels * num_block, num_channels // 4, kernel_size=3, stride=1, padding=1, padding_mode=padding_mode)
+        self.actv = actv()
+        self.conv2 = nn.Conv2d(num_channels // 4, num_channels, kernel_size=3, stride=1, padding=1, padding_mode=padding_mode)
+        self.channel_attention = ChannelAttention(num_channels, ratio=reduction, actv=actv, padding_mode=padding_mode)
+        self.spatial_attention = SpatialAttention(kernel_size=kernel_size, padding_mode=padding_mode)
 
-    def forward(self, block):
-        channel_map = self.channel_attention(block)
-        spatial_map = self.spatial_attention(block)
-        x = 0
-        for b_i, c_i, s_i in zip(block, channel_map, spatial_map):
-            x_i = c_i * b_i
-            x_i = s_i * x_i
-            x = x + x_i
+    def forward(self, x):
+        x = self.conv2(self.actv(self.conv1(x)))
+        x = self.channel_attention(x) * x
+        x = self.spatial_attention(x) * x
         return x
 
 
@@ -87,18 +73,18 @@ def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, re
                 self.res_module = nn.Sequential(nn.Conv2d(num_channel, num_channel, 3, 1, 1, padding_mode=padding_mode),
                                                 actv(),
                                                 nn.Conv2d(num_channel, num_channel, 3, 1, 1, padding_mode=padding_mode))
-                self.res_attention = RALayer(num_channel, 3, kernel_size=kernel_size, reduction=reduction, padding_mode=padding_mode)
+                self.res_attention = RALayer(num_channel, 3, kernel_size=kernel_size, reduction=reduction, padding_mode=padding_mode, actv=actv)
 
             def forward(self, feat):
-                res_list = []
                 x = feat
+                res_cat = None
                 for i in range(2):
                     submodule_i = getattr(self, 'submodule' + str(i + 1))
                     x, x_res = submodule_i(x)
-                    res_list = res_list + [x_res]
-                last_res = self.res_module(x)
-                res_list = res_list + [last_res]
-                res_agg = self.res_attention(res_list)
+                    res_cat = x_res if res_cat is None else torch.cat([res_cat, x_res], dim=1)
+                x_res = self.res_module(x)
+                res_cat = torch.cat([res_cat, x_res], dim=1)
+                res_agg = self.res_attention(res_cat)
                 out = feat + res_agg
                 return out, res_agg
         LRAB_class = Module
