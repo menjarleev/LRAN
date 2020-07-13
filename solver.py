@@ -269,20 +269,20 @@ class Solver:
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
 
             SR = self.netG(LR).detach()
+            HR, SR = util.quantize(HR, 1), util.quantize(SR, 1)
             HR, SR = tensor2im([HR, SR], normalize=opt.normalize)
 
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
                 io.imsave(save_path, SR)
-            if opt.crop:
-                HR = HR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
-                SR = SR[opt.crop:-opt.crop, opt.crop:-opt.crop, :]
+            crop_size = opt.scale + (6 if phase == 'validation' else 0)
+            HR = HR[crop_size:-crop_size, crop_size:-crop_size, :]
+            SR = SR[crop_size:-crop_size, crop_size:-crop_size, :]
             if phase == 'validation':
-                psnr += util.calculate_psnr(HR, SR)
+                psnr += util.calculate_psnr(SR, HR)
                 ssim += structural_similarity(HR, SR, data_range=255, multichannel=True, gaussian_weights=True, K1=0.01, K2=0.03)
             else:
-                HR = util.rgb2ycbcr(HR)
-                SR = util.rgb2ycbcr(SR)
+                HR, SR = util.rgb2ycbcr(HR), util.rgb2ycbcr(SR)
                 psnr += util.calculate_psnr(HR, SR)
                 ssim += structural_similarity(HR, SR, data_range=255, multichannel=False, gaussian_weights=True, K1=0.01, K2=0.03)
 
