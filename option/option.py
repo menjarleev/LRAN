@@ -9,13 +9,13 @@ def parse_args():
     parser.add_argument('--pretrain', type=str, default='')
     parser.add_argument('--netG', type=str, default='LRAN')
     parser.add_argument('--netD', type=str, default='MULTISCALE')
-    parser.add_argument('--actv_G', type=str, default='LeakyReLU')
+    parser.add_argument('--actv_G', type=str, default='ReLU')
     parser.add_argument('--slope_G', type=float, default=1e-2)
-    parser.add_argument('--padding_G', type=str, default='reflect')
-    parser.add_argument('--actv_D', type=str, default='LeakyReLU')
+    parser.add_argument('--padding_G', type=str, default='zeros')
+    parser.add_argument('--actv_D', type=str, default='ReLU')
     parser.add_argument('--slope_D', type=float, default=1e-2)
     parser.add_argument('--conv_layer_D', type=str, default='default')
-    parser.add_argument('--padding_D', type=str, default='reflect')
+    parser.add_argument('--padding_D', type=str, default='zeros')
     parser.add_argument('--ndf', type=int, default=64)
     parser.add_argument('--n_layer_D', type=int, default=3)
     parser.add_argument('--num_D', type=int, default=2)
@@ -103,6 +103,14 @@ def make_template(opt):
         opt.max_steps = 500000
         opt.reduction = 8
 
+    if 'PRAN'in opt.netG:
+        opt.num_blocks = 125
+        opt.num_channels = 64
+        opt.res_scale = 1.0
+        opt.decay = '150-250-350-450'
+        opt.max_steps = 500000
+        opt.reduction = 16
+
     if "RCAN" in opt.netG:
         opt.num_groups = 10
         opt.num_blocks = 20
@@ -142,7 +150,7 @@ def make_template(opt):
 
 
     # evaluation setup
-    opt.crop = 6
+    opt.crop = 6 if "DIV2K" in opt.dataset or "AIM" in opt.dataset else 0
     opt.crop += opt.scale if "SR" in opt.dataset else 4
 
     # note: we tested on color DN task

@@ -1,4 +1,5 @@
 import random
+import math
 import numpy as np
 
 def crop(HQ, LQ, psize, scale=4):
@@ -26,6 +27,11 @@ def flip_and_rotate(HQ, LQ):
 
     return HQ, LQ
 
+
+
+def quantize(img, rgb_range):
+    pixel_range = 255 / rgb_range
+    return img.mul(pixel_range).clamp(0, 255).round().div(pixel_range)
 
 def rgb2ycbcr(img, y_only=True):
     in_img_type = img.dtype
@@ -56,7 +62,6 @@ def calculate_psnr(img1, img2):
     if mse == 0:
         return float("inf")
     return 20 * np.log10(255.0 / np.sqrt(mse))
-
 
 def calculate_score(psnr, ssim):
     return 0.5 * psnr / 50 + 0.5 * (ssim - 0.4) / 0.6
