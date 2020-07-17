@@ -83,6 +83,11 @@ def parse_args():
     parser.add_argument('--test_range', type=str, default='inf')
     parser.add_argument('--eval_metric', type=str, default='psnr')
 
+    # inference
+    parser.add_argument('--infer', action='store_true')
+    parser.add_argument('--infer_root', type=str, default='/home/lhuo9710/PycharmProjects/dataset/AIM/val')
+
+
     return parser.parse_args()
 
 def make_template(opt):
