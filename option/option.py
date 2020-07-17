@@ -83,11 +83,6 @@ def parse_args():
     parser.add_argument('--test_range', type=str, default='inf')
     parser.add_argument('--eval_metric', type=str, default='psnr')
 
-    # inference
-    parser.add_argument('--infer', action='store_true')
-    parser.add_argument('--infer_root', type=str, default='/home/lhuo9710/PycharmProjects/dataset/AIM/val')
-
-
     return parser.parse_args()
 
 def make_template(opt):
@@ -106,6 +101,13 @@ def make_template(opt):
         opt.res_scale = 1.0
         opt.decay = '150-250-350-450'
         opt.max_steps = 500000
+        opt.reduction = 8
+
+    if 'INSR' in opt.netG:
+        opt.num_blocks = 20
+        opt.num_groups = 10
+        opt.num_channels = 64
+        opt.padding_G = 'reflect'
         opt.reduction = 8
 
     if 'PRAN'in opt.netG:

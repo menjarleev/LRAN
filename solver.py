@@ -23,6 +23,7 @@ class Solver:
         self.netG = netG.Net(opt).to(self.device)
         self.netD, self.optimG, self.optimD, self.schedulerG, self.schedulerD = [None] * 5
         self.module_dict = {'netG': self.netG}
+        self.loss_collector = loss_collector.LossCollector(opt)
         Visualizer.log_print(opt, "# params of netG: {}".format(sum(map(lambda x: x.numel(), self.netG.parameters()))))
         self.save_dir = os.path.join(self.opt.ckpt_root, self.opt.name)
         os.makedirs(self.save_dir, exist_ok=True)
@@ -41,8 +42,7 @@ class Solver:
             'step': 0,
         }
 
-        if not opt.test_only and not opt.infer:
-            self.loss_collector = loss_collector.LossCollector(opt)
+        if not opt.test_only:
             self.optimG = torch.optim.Adam(
                 self.netG.parameters(), opt.lr,
                 betas=(0.9, 0.999), eps=1e-8
@@ -70,13 +70,12 @@ class Solver:
                 self.module_dict.update({'netD': self.netD,
                                          'optimD': self.optimD,
                                          'schedulerD': self.schedulerD})
-        if not opt.infer:
-            self.validation_loader = generate_loader(opt, 'validation', opt.dataset)
+        self.validation_loader = generate_loader(opt, 'validation', opt.dataset)
 
         if opt.continue_train or opt.pretrain:
             self.load(opt.pretrain, self.module_dict)
 
-        if not opt.test_only and opt.amp != 'O0' and not opt.infer:
+        if not opt.test_only and opt.amp != 'O0':
             from apex import amp
             Visualizer.log_print(opt, 'use amp optimization')
             if 'gan' in opt.loss_terms:
@@ -248,28 +247,6 @@ class Solver:
         self.save_log_iter('latest')
         self.t1 = time.time()
 
-    @torch.no_grad()
-    def inference(self, data_loader, dataset_name):
-        opt = self.opt
-        if opt.save_result:
-            save_root = os.path.join(self.save_dir, 'output', dataset_name)
-            os.makedirs(save_root, exist_ok=True)
-        tqdm_data_loader = tqdm(data_loader, desc='infer', leave=False)
-        for i, input in enumerate(tqdm_data_loader):
-            LR = input[0].to(self.device)
-            path = os.path.basename(input[1][0])
-            print('process image [{}]'.format(path))
-            if 'cutblur' in opt.augs:
-                scale = opt.scale
-                LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
-            SR = self.netG(LR).detach()
-            SR = util.quantize(SR, 1)
-            SR = tensor2im(SR, normalize=opt.normalize)
-
-            if opt.save_result:
-                save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
-                io.imsave(save_path, SR)
-
 
     @torch.no_grad()
     def evaluate(self, data_loader, phase, dataset_name):
@@ -380,8 +357,7 @@ class Solver:
         for k, v in module_dict.items():
             if 'net' in k:
                 load_network(v, state[k], k)
-                if self.device != 'cpu':
-                    v.cuda()
+                v.cuda()
             else:
                 load_other(v, state[k], k)
 

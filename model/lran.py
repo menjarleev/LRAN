@@ -10,7 +10,7 @@ class ChannelAttention(nn.Module):
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         inter_channel = max(1, in_planes // ratio)
         self.fc1 = nn.Conv2d(in_planes, inter_channel, 1, bias=False, padding_mode=padding_mode)
-        self.actv = actv(inplace=True)
+        self.actv = actv()
         self.fc2 = nn.Conv2d(inter_channel, in_planes, 1, bias=False, padding_mode=padding_mode)
         self.sigmoid = nn.Sigmoid()
 
@@ -41,7 +41,7 @@ class RALayer(nn.Module):
     def __init__(self, num_channels, num_block, kernel_size=7, reduction=16, padding_mode='reflect', actv=nn.ReLU):
         super(RALayer, self).__init__()
         self.conv1 = nn.Conv2d(num_channels * num_block, num_channels // 4, kernel_size=3, stride=1, padding=1, padding_mode=padding_mode)
-        self.actv = actv(inplace=True)
+        self.actv = actv()
         self.conv2 = nn.Conv2d(num_channels // 4, num_channels, kernel_size=3, stride=1, padding=1, padding_mode=padding_mode)
         self.channel_attention = ChannelAttention(num_channels, ratio=reduction, actv=actv, padding_mode=padding_mode)
         self.spatial_attention = SpatialAttention(kernel_size=kernel_size, padding_mode=padding_mode)
@@ -71,7 +71,7 @@ def get_LRAB_group(n_channel, n_block, LRAB_dict, res_scale=1, kernel_size=7, re
                         submodule = get_LRAB_group(num_channel, sub_num_block, class_dict)
                     setattr(self, 'submodule' + str(i + 1), submodule)
                 self.res_module = nn.Sequential(nn.Conv2d(num_channel, num_channel, 3, 1, 1, padding_mode=padding_mode),
-                                                actv(inplace=True),
+                                                actv(),
                                                 nn.Conv2d(num_channel, num_channel, 3, 1, 1, padding_mode=padding_mode))
                 self.res_attention = RALayer(num_channel, 3, kernel_size=kernel_size, reduction=reduction, padding_mode=padding_mode, actv=actv)
 
