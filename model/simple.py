@@ -13,12 +13,12 @@ class Net(torch.nn.Module):
         if opt.normalize:
             sequence = [[conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
                          norm(ndf),
-                         actv()]]
+                         actv(inplace=True)]]
         else:
             sequence = [[MeanShift(1, rgb_mean=opt.rgb_mean),
                          conv(input_nc, ndf, kernel_size=3, stride=2, padding_mode=padding_mode),
                          norm(ndf),
-                         actv()]]
+                         actv(inplace=True)]]
         nf = ndf
         for n in range(1, self.n_layer):
             nf_prev = nf
@@ -26,14 +26,14 @@ class Net(torch.nn.Module):
             sequence += [[
                 conv(nf_prev, nf, kernel_size=3, stride=2, padding_mode=padding_mode),
                 norm(nf),
-                actv()
+                actv(inplace=True)
             ]]
         nf_prev = nf
         nf = min(nf * 2, 512)
         sequence += [[
             conv(nf_prev, nf, kernel_size=3, stride=1, padding_mode=padding_mode),
             norm(nf),
-            actv()
+            actv(inplace=True)
         ]]
         sequence += [[conv(nf, 1, kernel_size=3, stride=1, padding_mode=padding_mode)]]
 

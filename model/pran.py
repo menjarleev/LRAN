@@ -10,7 +10,7 @@ class ChannelAttention(nn.Module):
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         inter_channel = max(1, in_planes // ratio)
         self.fc1 = nn.Conv2d(in_planes, inter_channel, 1, bias=False, padding_mode=padding_mode)
-        self.actv = actv()
+        self.actv = actv(inplace=True)
         self.fc2 = nn.Conv2d(inter_channel, in_planes, 1, bias=False, padding_mode=padding_mode)
 
     def forward(self, x):
@@ -54,7 +54,7 @@ class CSAB(nn.Module):
         super(CSAB, self).__init__()
         body = [
             nn.Conv2d(in_channels, out_channels, 3, 1, 1, padding_mode=padding_mode),
-            actv(),
+            actv(inplace=True),
             AttentionLayer(out_channels, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
         ]
         self.body = nn.Sequential(*body)
@@ -69,7 +69,7 @@ class RCSAB(nn.Module):
         self.res_scale = res_scale
         body = [
             nn.Conv2d(num_channels, num_channels, 3, 1, 1, padding_mode=padding_mode),
-            actv(),
+            actv(inplace=True),
             nn.Conv2d(num_channels, num_channels, 3, 1, 1, padding_mode=padding_mode),
             AttentionLayer(num_channels, reduction=reduction, actv=actv, kernel_size=kernel_size,
                            padding_mode=padding_mode)
@@ -159,9 +159,6 @@ class Net(nn.Module):
     def forward(self, x):
         if not self.normalize:
             x = self.sub_mean(x)
-        if self.use_vgg:
-            feat1 = self.slice1(x)
-            x = torch.cat([x, feat1], dim=1)
         x = self.head(x)
         x, _ = self.body(x)
         x = self.tail(x)

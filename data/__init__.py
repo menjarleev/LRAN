@@ -16,15 +16,12 @@ def generate_loader(opt, phase, dataset_name):
         mname = importlib.import_module('data.test')
     elif 'Benchmark' in dataset_name:
         mname = importlib.import_module('data.benchmark')
-    elif 'SR' in dataset_name:
-        mname = importlib.import_module('data.benchmark')
-        cname = 'BenchmarkSR'
-    elif 'DN' in dataset_name:
-        mname = importlib.import_module('data.benchmark')
-        cname = 'BenchmarkDN'
-    elif 'JPEG' in dataset_name:
-        mname = importlib.import_module('data.benchmark')
-        cname = 'BenchmarkJPEG'
+        if 'SR' in dataset_name:
+            cname = 'BenchmarkSR'
+        elif 'DN' in dataset_name:
+            cname = 'BenchmarkDN'
+        elif 'JPEG' in dataset_name:
+            cname = 'BenchmarkJPEG'
 
     else:
         raise ValueError('Unsupported datasetL {}'.format(opt.dataset))
