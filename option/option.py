@@ -115,6 +115,14 @@ def make_template(opt):
         opt.padding_G = 'reflect'
         opt.reduction = 8
 
+    if 'SRAN' in opt.netG:
+        opt.num_blocks = [[50, 0], [30, 20], [20, 30], [10, 40]]
+        opt.num_groups = 4
+        opt.num_channels = 64
+        opt.padding_G = 'reflect'
+        opt.reduction = 16
+        opt.res_scale = 1.0
+
     if 'PRAN'in opt.netG:
         opt.num_blocks = 125
         opt.num_channels = 64

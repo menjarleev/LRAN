@@ -139,8 +139,8 @@ class Net(nn.Module):
             head = [nn.Conv2d(input_nc, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
         body = []
         for i in range(2):
-            body += [RICAB(opt.num_channels, opt.reduction, kernel_size=[3, 5, 7, 11],
-                           dilation=[1, 1, 1, 1], actv=actv, padding_mode=padding_mode)]
+            body += [RICAB(opt.num_channels, opt.reduction, kernel_size=[5, 7],
+                           dilation=[1, 1], actv=actv, padding_mode=padding_mode)]
         for i in range(opt.num_groups):
             body += [Group(opt.num_blocks, opt.num_channels, opt.reduction, kernel_size=[3, 3], dilation=[1, 2], actv=actv, padding_mode=padding_mode)]
         body += [nn.Conv2d(opt.num_channels, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
