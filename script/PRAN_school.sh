@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # PRAN
 user_name="lhuo9710";
-gpu_id="2";
-num_blocks="128";
-group_size="2";
-name="exp1"
+gpu_id="3";
+num_blocks="125";
+group_size="5";
+name="exp2"
 
 #user_name="lhuo9710";
 #gpu_id="2";
