@@ -126,6 +126,7 @@ def make_template(opt):
     if 'PRAN'in opt.netG:
         opt.num_blocks = 125
         opt.num_channels = 64
+        opt.group_size = 5
         opt.res_scale = 1.0
         opt.decay = '150-250-350-450'
         opt.max_steps = 500000

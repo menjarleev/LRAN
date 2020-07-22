@@ -4,13 +4,16 @@ import numpy as np
 
 def crop(HQ, LQ, psize, scale=4):
     h, w = LQ.shape[:-1]
-    x = random.randrange(0, w-psize+1)
-    y = random.randrange(0, h-psize+1)
+    ip = psize
+    tp = scale * ip
+    ix = random.randrange(0, w-psize+1)
+    iy = random.randrange(0, h-psize+1)
+    tx, ty = scale * ix, scale * iy
 
-    crop_HQ = HQ[y*scale:y*scale+psize*scale, x*scale:x*scale+psize*scale]
-    crop_LQ = LQ[y:y+psize, x:x+psize]
+    HQ = HQ[ty:ty + tp, tx:tx + tp, :]
+    LQ = LQ[iy:iy + ip, ix:ix + ip, :]
 
-    return crop_HQ.copy(), crop_LQ.copy()
+    return HQ, LQ
 
 
 def flip_and_rotate(HQ, LQ):

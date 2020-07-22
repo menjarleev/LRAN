@@ -1,6 +1,7 @@
 import os
 import time
 import skimage.io as io
+import imageio
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -149,13 +150,6 @@ class Solver:
                 SR, HR = SR*mask, HR*mask
 
             GAN_fake, GAN_true = SR, HR
-            if opt.dis_res:
-                temp_LR = LR
-                if HR.size() != LR.size():
-                    scale = HR.size(2) // LR.size(2)
-                    temp_LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
-                GAN_fake = GAN_fake - temp_LR
-                GAN_true = GAN_true - temp_LR
 
             if len(opt.L1_decay) >= 1:
                 self.loss_collector.update_L1_weight(step)
@@ -292,9 +286,8 @@ class Solver:
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
 
             SR = self.netG(LR).detach()
-            HR, SR = util.quantize(HR, 1), util.quantize(SR, 1)
+            SR = util.quantize(SR, 1)
             HR, SR = tensor2im([HR, SR], normalize=opt.normalize)
-
             if opt.save_result:
                 save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
                 io.imsave(save_path, SR)
