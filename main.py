@@ -5,12 +5,24 @@ from option.option import get_option
 from util.visualizer import Visualizer
 from solver import Solver
 from data.infer import InferDataset
+import numpy as np
+import random
 import os
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.device_count() == 1:
+        torch.cuda.manual_seed(seed)
+    else:
+        torch.cuda.manual_seed_all(seed)
 
 def main():
     opt = get_option()
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu_id)
-    torch.manual_seed(opt.seed)
+    set_seed(opt.seed)
     generator = importlib.import_module("model.{}".format(opt.netG.lower()))
     discriminator = importlib.import_module('model.{}'.format(opt.netD.lower()))
     if not opt.test_only:

@@ -86,6 +86,9 @@ def parse_args():
     # inference
     parser.add_argument('--infer', action='store_true')
     parser.add_argument('--infer_root', type=str, default='/home/lhuo9710/PycharmProjects/dataset/AIM/val')
+    parser.add_argument('--num_blocks', type=int, default=128)
+    parser.add_argument('--group_size', type=int, default=2)
+
 
 
     return parser.parse_args()
@@ -116,9 +119,35 @@ def make_template(opt):
         opt.reduction = 8
 
     if 'SRAN' in opt.netG:
+        # for school -> receptive field larger than 100
         opt.num_blocks = [[50, 0], [30, 20], [20, 30], [10, 40]]
-        opt.num_groups = 4
+        opt.batch_size = 32
         opt.num_channels = 64
+        opt.num_groups = 4
+        opt.padding_G = 'reflect'
+        opt.reduction = 16
+        opt.res_scale = 1.0
+
+    if 'LSR' in opt.netG:
+        # for school -> receptive field larger than 100
+        opt.num_blocks = 5
+        # for school -> receptive field equals to 51
+        # opt.num_blocks = [1, 4]
+        opt.batch_size = 16
+        opt.num_channels = 64
+        opt.num_groups = 4
+        opt.padding_G = 'reflect'
+        opt.reduction = 16
+        opt.res_scale = 1.0
+
+    if 'LWSR' in opt.netG:
+        # for school -> receptive field larger than 100
+        opt.num_blocks = [[10, 20], [5, 25], [5, 25], [5, 25]]
+        # for school -> receptive field equals to 51
+        # opt.num_blocks = [1, 4]
+        opt.batch_size = 16
+        opt.num_channels = 64
+        opt.num_groups = 4
         opt.padding_G = 'reflect'
         opt.reduction = 16
         opt.res_scale = 1.0
@@ -130,7 +159,18 @@ def make_template(opt):
         opt.max_steps = 500000
         opt.reduction = 16
 
-    if "RCAN" in opt.netG:
+    if 'SRRCAN' in opt.netG:
+        opt.num_groups = 10
+        opt.num_blocks = [[6, 14]]
+        opt.num_blocks += [[2, 18]] * 9
+        opt.num_channels = 64
+        opt.reduction = 16
+        opt.res_scale = 1.0
+        opt.max_steps = 1000000
+        opt.decay = "200-400-600-800"
+        opt.gclip = 0.5 if opt.pretrain else opt.gclip
+
+    elif "RCAN" in opt.netG:
         opt.num_groups = 10
         opt.num_blocks = 20
         opt.num_channels = 64
