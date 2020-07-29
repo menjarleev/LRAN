@@ -23,7 +23,7 @@ class ResBlock(nn.Module):
 
         self.body = nn.Sequential(
             nn.Conv2d(num_channels, num_channels, 3, 1, 1, padding_mode=padding_mode),
-            activation(),
+            activation(inplace=True),
             nn.Conv2d(num_channels, num_channels, 3, 1, 1, padding_mode=padding_mode)
         )
         self.res_out = res_out

@@ -159,6 +159,15 @@ def make_template(opt):
         opt.max_steps = 500000
         opt.reduction = 16
 
+    if 'RASR'in opt.netG:
+        opt.num_channels = 64
+        opt.num_blocks = 128
+        opt.res_scale = 1.0
+        opt.decay = '150-250-350-450'
+        opt.max_steps = 500000
+        opt.reduction = 4
+
+
     if 'SRRCAN' in opt.netG:
         opt.num_groups = 10
         opt.num_blocks = [[6, 14]]
