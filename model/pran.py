@@ -55,7 +55,7 @@ class CSAB(nn.Module):
         body = [
             nn.Conv2d(in_channels, out_channels, 3, 1, 1, padding_mode=padding_mode),
             actv(inplace=True),
-            AttentionLayer(out_channels, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
+           AttentionLayer(out_channels, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
         ]
         self.body = nn.Sequential(*body)
 
