@@ -90,7 +90,8 @@ def get_RAB_group(n_channel, n_block, RAB_dict, res_scale=1, kernel_size=7, redu
                         prev_layer = class_dict[submodule_name](num_channel, sub_num_block, class_dict)
                         submodule = AttentionWrapper(prev_layer, kernel_size, padding_mode)
                     else:
-                        submodule = get_RAB_group(num_channel, sub_num_block, class_dict, res_scale, kernel_size, reduction, actv, padding_mode, group_size)
+                        prev_layer = get_RAB_group(num_channel, sub_num_block, class_dict, res_scale, kernel_size, reduction, actv, padding_mode, group_size)
+                        submodule = AttentionWrapper(prev_layer, kernel_size, padding_mode)
                     setattr(self, 'submodule' + str(i + 1), submodule)
                 self.agg = ChannelAggBlock(self.group_size * num_channel, num_channel, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
 

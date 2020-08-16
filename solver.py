@@ -246,13 +246,14 @@ class Solver:
     def inference(self, data_loader, dataset_name):
         opt = self.opt
         if opt.save_result:
-            save_root = os.path.join(self.save_dir, 'output', dataset_name)
+            save_root = os.path.join(self.save_dir, 'SR', opt.degration, opt.method, dataset_name, 'x{}'.format(opt.scale))
+            # save_root = os.path.join(self.save_dir, 'output', dataset_name)
             os.makedirs(save_root, exist_ok=True)
         tqdm_data_loader = tqdm(data_loader, desc='infer', leave=False)
         for i, input in enumerate(tqdm_data_loader):
             LR = input[0].to(self.device)
-            path = os.path.basename(input[1][0])
-            print('process image [{}]'.format(path))
+            name = os.path.basename(input[1][0]).split('_')[0]
+            print('process image [{}]'.format(name))
             if 'cutblur' in opt.augs:
                 scale = opt.scale
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
@@ -261,7 +262,7 @@ class Solver:
             SR = tensor2im(SR, normalize=opt.normalize)
 
             if opt.save_result:
-                save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
+                save_path = os.path.join(save_root, '{}_{}_x{}.png'.format(name, opt.method, opt.scale))
                 io.imsave(save_path, SR)
 
 

@@ -88,6 +88,8 @@ def parse_args():
     parser.add_argument('--infer_root', type=str, default='/home/lhuo9710/PycharmProjects/dataset/AIM/val')
     parser.add_argument('--num_blocks', type=int, default=128)
     parser.add_argument('--group_size', type=int, default=2)
+    parser.add_argument('--degration', type=str, default='BI')
+    parser.add_argument('--method', type=str, default='LWSR')
 
 
 
@@ -162,6 +164,7 @@ def make_template(opt):
     if 'RASR'in opt.netG:
         opt.num_channels = 64
         opt.num_blocks = 128
+        opt.group_size = 2
         opt.res_scale = 1.0
         opt.decay = '150-250-350-450'
         opt.max_steps = 500000
