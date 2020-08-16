@@ -108,23 +108,23 @@ class Solver:
             else:
                 raise FileNotFoundError('iteration file at %s is not found' % json_path)
 
-        if not opt.test_only and not opt.no_test_during_train:
-            self.test_dir = self.save_dir
-            os.makedirs(self.test_dir, exist_ok=True)
-            self.test_loader = generate_loader(opt, 'test', opt.dataset_test)
-            self.test_dict = {'netG': self.netG}
-            try:
-                test = self.data[opt.test_name]
-                Visualizer.log_print(opt, '========== [{}] current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K '
-                                     .format(opt.test_name, test['psnr'], test['ssim'], test['score'], test['step'] // 1000))
-            except:
-                Visualizer.log_print(opt, 'test result not found')
-                self.data[opt.test_name] = {
-                    'psnr': 0,
-                    'ssim': 0,
-                    'score': -10,
-                    'step': 0,
-                }
+        # if not opt.test_only and not opt.no_test_during_train:
+        #     self.test_dir = self.save_dir
+        #     os.makedirs(self.test_dir, exist_ok=True)
+        #     self.test_loader = generate_loader(opt, 'test', opt.dataset_test)
+        #     self.test_dict = {'netG': self.netG}
+        #     try:
+        #         test = self.data[opt.test_name]
+        #         Visualizer.log_print(opt, '========== [{}] current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K '
+        #                              .format(opt.test_name, test['psnr'], test['ssim'], test['score'], test['step'] // 1000))
+        #     except:
+        #         Visualizer.log_print(opt, 'test result not found')
+        #         self.data[opt.test_name] = {
+        #             'psnr': 0,
+        #             'ssim': 0,
+        #             'score': -10,
+        #             'step': 0,
+        #         }
         for step in tqdm(range(start, opt.max_steps), desc='train', leave=False):
             try:
                 inputs = next(iters)
@@ -177,8 +177,8 @@ class Solver:
             if (step + 1) % opt.eval_steps == 0 or opt.debug:
                 self.summary_and_save(step, loss_dict)
 
-            if (not opt.no_test_during_train and (step + 1) % opt.test_steps == 0) or opt.debug:
-                self.test_and_save(step)
+            # if (not opt.no_test_during_train and (step + 1) % opt.test_steps == 0) or opt.debug:
+            #     self.test_and_save(step)
 
     def test_and_save(self, step):
         opt = self.opt
@@ -245,13 +245,16 @@ class Solver:
     @torch.no_grad()
     def inference(self, data_loader, dataset_name):
         opt = self.opt
+        scale = opt.scale
+        method = opt.name
         if opt.save_result:
-            save_root = os.path.join(self.save_dir, 'SR', opt.degration, opt.method, dataset_name, 'x{}'.format(opt.scale))
-            # save_root = os.path.join(self.save_dir, 'output', dataset_name)
+            save_root = os.path.join(self.save_dir, 'SR', opt.degration, method, dataset_name, 'x{}'.format(scale))
             os.makedirs(save_root, exist_ok=True)
         tqdm_data_loader = tqdm(data_loader, desc='infer', leave=False)
         for i, input in enumerate(tqdm_data_loader):
             LR = input[0].to(self.device)
+            path = input[1][0]
+            file_name = os.path.basename(path).replace('LR{}'.format(opt.degration), method)
             name = os.path.basename(input[1][0]).split('_')[0]
             print('process image [{}]'.format(name))
             if 'cutblur' in opt.augs:
@@ -262,18 +265,21 @@ class Solver:
             SR = tensor2im(SR, normalize=opt.normalize)
 
             if opt.save_result:
-                save_path = os.path.join(save_root, '{}_{}_x{}.png'.format(name, opt.method, opt.scale))
+                save_path = os.path.join(save_root, file_name)
                 io.imsave(save_path, SR)
 
 
     @torch.no_grad()
     def evaluate(self, data_loader, phase, dataset_name):
         opt = self.opt
+        method = opt.name
+        scale = opt.scale
         self.netG.eval()
 
         if opt.save_result:
-            save_root = os.path.join(self.save_dir, 'output', dataset_name)
+            save_root = os.path.join(self.save_dir, 'SR', opt.degration, dataset_name, 'x{}'.format(scale))
             os.makedirs(save_root, exist_ok=True)
+
 
         psnr = 0
         ssim = 0
@@ -281,7 +287,9 @@ class Solver:
         for i, inputs in enumerate(tqdm_data_loader):
             HR = inputs[0].to(self.device)
             LR = inputs[1].to(self.device)
+            path = inputs[2]
 
+            file_name = os.path.basename(path).replace('HR', method)
             if 'cutblur' in opt.augs and HR.size() != LR.size():
                 scale = HR.size(2) // LR.size(2)
                 LR = F.interpolate(LR, scale_factor=scale, mode='nearest')
@@ -290,18 +298,14 @@ class Solver:
             SR = util.quantize(SR, 1)
             HR, SR = tensor2im([HR, SR], normalize=opt.normalize)
             if opt.save_result:
-                save_path = os.path.join(save_root, '{:04}.png'.format(i+1))
+                save_path = os.path.join(save_root, file_name)
                 io.imsave(save_path, SR)
             crop_size = opt.scale + (6 if phase == 'validation' else 0)
             HR = HR[crop_size:-crop_size, crop_size:-crop_size, :]
             SR = SR[crop_size:-crop_size, crop_size:-crop_size, :]
-            if phase == 'validation':
-                psnr += util.calculate_psnr(SR, HR)
-                ssim += structural_similarity(HR, SR, data_range=255, multichannel=True, gaussian_weights=True, K1=0.01, K2=0.03)
-            else:
-                HR, SR = util.rgb2ycbcr(HR), util.rgb2ycbcr(SR)
-                psnr += util.calculate_psnr(HR, SR)
-                ssim += structural_similarity(HR, SR, data_range=255, multichannel=False, gaussian_weights=True, K1=0.01, K2=0.03)
+            HR, SR = util.rgb2ycbcr(HR), util.rgb2ycbcr(SR)
+            psnr += util.calculate_psnr(HR, SR)
+            ssim += structural_similarity(HR, SR, data_range=255, multichannel=False, gaussian_weights=True, K1=0.01, K2=0.03)
 
         self.netG.train()
 

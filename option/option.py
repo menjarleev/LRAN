@@ -67,10 +67,8 @@ def parse_args():
     parser.add_argument('--print_mem', type=bool, default=True)
     parser.add_argument('--step_label', type=str, default='latest')
     parser.add_argument('--continue_train', action='store_true')
-    parser.add_argument('--loss_terms', type=str, default='GAN,feat,L1,VGG')
+    parser.add_argument('--loss_terms', type=str, default='L1')
     parser.add_argument('--gpu_id', type=int, default=0)
-    parser.add_argument('--dir_HQ', type=str, default='x1')
-    parser.add_argument('--dir_LQ', type=str, default='x4')
     parser.add_argument('--normalize', action='store_true')
     parser.add_argument('--dis_res', action='store_true')
 
@@ -84,12 +82,12 @@ def parse_args():
     parser.add_argument('--eval_metric', type=str, default='psnr')
 
     # inference
+    parser.add_argument('--infer_name', type=str, default='Set14')
     parser.add_argument('--infer', action='store_true')
     parser.add_argument('--infer_root', type=str, default='/home/lhuo9710/PycharmProjects/dataset/AIM/val')
     parser.add_argument('--num_blocks', type=int, default=128)
     parser.add_argument('--group_size', type=int, default=2)
     parser.add_argument('--degration', type=str, default='BI')
-    parser.add_argument('--method', type=str, default='LWSR')
 
 
 

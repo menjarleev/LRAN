@@ -13,7 +13,7 @@ class BenchmarkSR(data.BaseDataset):
         super(BenchmarkSR, self).__init__(phase, opt)
 
     def get_subdir(self):
-        dir_HQ = 'x1'
+        dir_HQ = 'x{}'.format(self.scale)
         dir_LQ = 'x{}'.format(self.scale)
         return dir_HQ, dir_LQ
 
@@ -24,7 +24,7 @@ class BenchmarkDN(BenchmarkSR):
         super(BenchmarkDN, self).__init__(phase, opt)
 
     def get_subdir(self):
-        dir_HQ = 'HQ'
+        dir_HQ = '{}'.format(self.sigma)
         dir_LQ = '{}'.format(self.sigma)
         return dir_HQ, dir_LQ
 
@@ -35,6 +35,6 @@ class BenchmarkJPEG(BenchmarkSR):
         super(BenchmarkJPEG, self).__init__(phase, opt)
 
     def get_subdir(self):
-        dir_HQ = 'HQ'
+        dir_HQ = '{}'.format(self.quality)
         dir_LQ = '{}'.format(self.quality)
         return dir_HQ, dir_LQ

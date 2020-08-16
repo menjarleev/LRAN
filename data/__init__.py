@@ -12,10 +12,6 @@ def generate_loader(opt, phase, dataset_name):
     cname = dataset_name.replace('_', '')
     if "DIV2K" in dataset_name:
         mname = importlib.import_module('data.div2k')
-    elif 'AIMSR' in dataset_name:
-        mname = importlib.import_module('data.aim')
-    elif 'Test' in dataset_name:
-        mname = importlib.import_module('data.test')
     elif 'Benchmark' in dataset_name:
         mname = importlib.import_module('data.benchmark')
         if 'SR' in dataset_name:
@@ -67,7 +63,7 @@ class BaseDataset(torch.utils.data.Dataset):
         HQ, LQ = im2tensor([HQ, LQ])
         if self.opt.normalize:
             HQ, LQ = normalize([HQ, LQ])
-        return HQ, LQ
+        return HQ, LQ, HQ_path, LQ_path
 
     def __len__(self):
         if self.phase == 'train':

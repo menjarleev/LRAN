@@ -49,7 +49,7 @@ def main():
             'drop_last': False,
         }
         dataloader = torch.utils.data.DataLoader(dataset, **kwargs)
-        solver.inference(dataloader, opt.name)
+        solver.inference(dataloader, opt.infer_name)
 
 
     else:
