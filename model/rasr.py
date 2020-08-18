@@ -41,15 +41,14 @@ class SpatialAttention(nn.Module):
         return out
 
 
-
-class ChannelAggBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, reduction=16, actv=nn.ReLU, kernel_size=3, padding_mode='zeros'):
-        super(ChannelAggBlock, self).__init__()
-        body = [
-            ChannelAttention(in_channels, reduction, actv, padding_mode),
-            nn.Conv2d(in_channels, out_channels, 1, 1, 0, padding_mode=padding_mode),
-            actv(inplace=True),
-        ]
+class AggregationBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, actv=nn.ReLU, kernel_size=3, padding_mode='zeros', dropout=True, p=0.5):
+        super(AggregationBlock, self).__init__()
+        body = []
+        if dropout:
+            body += [nn.Dropout2d(p=p)]
+        body += [nn.Conv2d(in_channels, out_channels, kernel_size, 1, kernel_size//2, padding_mode=padding_mode),
+                actv(inplace=True)]
         self.body = nn.Sequential(*body)
 
     def forward(self, x):
@@ -57,22 +56,24 @@ class ChannelAggBlock(nn.Module):
         return x
 
 
-
 class AttentionWrapper(nn.Module):
-    def __init__(self, prev_layer, kernel_size=3, padding_mode='zeros'):
+    def __init__(self, prev_layer, in_channels, reduction, actv=nn.ReLU, kernel_size=3, padding_mode='zeros'):
         super(AttentionWrapper, self).__init__()
         self.body = prev_layer
-        self.attn = SpatialAttention(kernel_size, padding_mode)
+        self.chattn = ChannelAttention(in_channels, reduction, actv, padding_mode)
+        self.spattn = SpatialAttention(kernel_size, padding_mode)
 
     def forward(self, feat):
         x, res = self.body(feat)
-        res_out = self.attn(res)
+        res_ch = self.chattn(res)
+        res_sp = self.spattn(res)
+        res_out = res_ch + res_sp
         return x, res_out
 
 
 
 def get_RAB_group(n_channel, n_block, RAB_dict, res_scale=1, kernel_size=7, reduction=16,
-                   actv=nn.ReLU, padding_mode='reflect', group_size=5):
+                   actv=nn.ReLU, padding_mode='reflect', group_size=5, dropout=False):
     assert type(RAB_dict) == dict
     if n_block % group_size == 0:
         class Module(nn.Module):
@@ -85,15 +86,18 @@ def get_RAB_group(n_channel, n_block, RAB_dict, res_scale=1, kernel_size=7, redu
                 for i in range(self.group_size):
                     if sub_num_block == 1:
                         prev_layer = ops.ResBlock(num_channel, res_scale=res_scale, activation=actv, padding_mode=padding_mode, res_out=True)
-                        submodule = AttentionWrapper(prev_layer, kernel_size, padding_mode)
                     elif submodule_name in class_dict:
                         prev_layer = class_dict[submodule_name](num_channel, sub_num_block, class_dict)
-                        submodule = AttentionWrapper(prev_layer, kernel_size, padding_mode)
                     else:
-                        prev_layer = get_RAB_group(num_channel, sub_num_block, class_dict, res_scale, kernel_size, reduction, actv, padding_mode, group_size)
-                        submodule = AttentionWrapper(prev_layer, kernel_size, padding_mode)
+                        prev_layer = get_RAB_group(num_channel, sub_num_block, class_dict, res_scale, kernel_size, reduction, actv, padding_mode, group_size, dropout)
+                    if i != self.group_size - 1:
+                        submodule = AttentionWrapper(prev_layer, num_channel, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
+                    else:
+                        submodule = prev_layer
                     setattr(self, 'submodule' + str(i + 1), submodule)
-                self.agg = ChannelAggBlock(self.group_size * num_channel, num_channel, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
+                self.agg = AggregationBlock((self.group_size - 1) * num_channel, num_channel, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode, dropout=dropout)
+                self.fusion = nn.Sequential(nn.Conv2d(num_channel, num_channel, kernel_size=kernel_size, stride=1, padding=kernel_size//2),
+                                            actv(inplace=True))
 
             def forward(self, feat):
                 x = feat
@@ -102,11 +106,13 @@ def get_RAB_group(n_channel, n_block, RAB_dict, res_scale=1, kernel_size=7, redu
                     submodule_i = getattr(self, 'submodule' + str(i + 1))
                     if i != self.group_size - 1:
                         x, x_res = submodule_i(x)
+                        res_cat = x_res if res_cat is None else torch.cat([res_cat, x_res], dim=1)
                     else:
-                        _, x_res = submodule_i(x)
-                    res_cat = x_res if res_cat is None else torch.cat([res_cat, x_res], dim=1)
+                        x, x_res = submodule_i(x)
+
                 res_agg = self.agg(res_cat)
-                out = feat + res_agg
+                x = x + feat
+                out = self.fusion(x + res_agg)
                 return out, res_agg
         RAB_class = Module
         RAB_dict['RABx{}'.format(n_block)] = RAB_class
@@ -139,7 +145,9 @@ class Net(nn.Module):
         else:
             head = [nn.Conv2d(input_nc, opt.num_channels, 3, 1, 1, padding_mode=padding_mode)]
         assert ('cutblur' in opt.augs and opt.use_vgg) is False, 'can choose either vgg feat or cutblur'
-        tail = [ops.Upsampler(opt.num_channels, opt.scale),
+        tail = [nn.Conv2d(opt.num_channels, opt.num_channels, 3, 1, 1, 1, padding_mode=padding_mode),
+                actv(inplace=True),
+                ops.Upsampler(opt.num_channels, opt.scale),
                 nn.Conv2d(opt.num_channels, 3, 3, 1, 1, padding_mode=padding_mode)]
         if opt.normalize:
             tail += [nn.Tanh()]
@@ -147,7 +155,7 @@ class Net(nn.Module):
         self.body = get_RAB_group(n_channel=opt.num_channels, n_block=opt.num_blocks,
                                    RAB_dict={}, res_scale=opt.res_scale, kernel_size=3,
                                    reduction=opt.reduction, actv=actv,
-                                   padding_mode=padding_mode, group_size=opt.group_size)
+                                   padding_mode=padding_mode, group_size=opt.group_size, dropout=opt.dropout)
         self.tail = nn.Sequential(*tail)
         self.opt = opt
 

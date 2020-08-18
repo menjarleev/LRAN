@@ -22,6 +22,8 @@ def parse_args():
     parser.add_argument('--gan_mode', type=str, default='ls', help='[ls|origin|hinge]')
     parser.add_argument('--norm_D', type=str, default='instance')
     parser.add_argument('--use_vgg', action='store_true')
+    parser.add_argument('--dropout', action='store_true')
+    parser.add_argument('--num_channels', type=int, default=64)
 
     # augmentations
     parser.add_argument('--use_moa', action='store_true')
@@ -33,8 +35,7 @@ def parse_args():
     parser.add_argument('--aux_alpha', type=float, default=1.2)
 
     # dataset
-    parser.add_argument('--dataset_root', type=str, default='./')
-    parser.add_argument('--dataset', type=str, default='AIMSR')
+    parser.add_argument('--root', type=str, default='./')
     parser.add_argument('--camera', type=str, default='all')  # RealSR
     parser.add_argument('--image_range', type=str, default='1-800/801-810')
     parser.add_argument('--scale', type=int, default=4)  # SR scale
@@ -55,6 +56,8 @@ def parse_args():
 
     # misc
     parser.add_argument('--test_only', action='store_true')
+    parser.add_argument('--no_validation', action='store_true')
+    parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--save_result', action='store_true')
     parser.add_argument('--ckpt_root', type=str, default='./ckpt')
     parser.add_argument('--lambda_feat', type=float, default=10.0)
@@ -63,31 +66,30 @@ def parse_args():
     parser.add_argument('--lambda_vgg', type=float, default=10.0)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--name', type=str, default='LRAN')
-    parser.add_argument('--amp', type=str, default='O1')
+    parser.add_argument('--amp', type=str, default='O0')
     parser.add_argument('--print_mem', type=bool, default=True)
     parser.add_argument('--step_label', type=str, default='latest')
     parser.add_argument('--continue_train', action='store_true')
     parser.add_argument('--loss_terms', type=str, default='L1')
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--normalize', action='store_true')
-    parser.add_argument('--dis_res', action='store_true')
 
     # test
-    parser.add_argument('--no_test_during_train', action='store_true')
-    parser.add_argument('--test_name', type=str, default='Set14')
     parser.add_argument('--test_steps', type=int, default=5000)
-    parser.add_argument('--dataroot_test', type=str, default='/home/menjarleev/PycharmProjects/dataset/Set14')
-    parser.add_argument('--dataset_test', type=str, default='TestSR')
-    parser.add_argument('--test_range', type=str, default='inf')
     parser.add_argument('--eval_metric', type=str, default='psnr')
 
     # inference
-    parser.add_argument('--infer_name', type=str, default='Set14')
     parser.add_argument('--infer', action='store_true')
-    parser.add_argument('--infer_root', type=str, default='/home/lhuo9710/PycharmProjects/dataset/AIM/val')
     parser.add_argument('--num_blocks', type=int, default=128)
     parser.add_argument('--group_size', type=int, default=2)
-    parser.add_argument('--degration', type=str, default='BI')
+    parser.add_argument('--degradation', type=str, default='BI')
+
+    parser.add_argument('--train_name', type=str, default='DIV2K')
+    parser.add_argument('--infer_name', type=str, default='Set14')
+    parser.add_argument('--test_name', type=str, default='Set14')
+    parser.add_argument('--train_type', type=str, default='DIV2KSR')
+    parser.add_argument('--test_type', type=str, default='benchmarkSR')
+    parser.add_argument('--infer_type', type=str, default='inferSR')
 
 
 
@@ -153,7 +155,6 @@ def make_template(opt):
         opt.res_scale = 1.0
 
     if 'PRAN'in opt.netG:
-        opt.num_channels = 64
         opt.res_scale = 1.0
         opt.decay = '150-250-350-450'
         opt.max_steps = 500000
@@ -202,31 +203,18 @@ def make_template(opt):
 
     opt.rgb_mean = (0.4488, 0.4371, 0.4040)
 
-    if "DN" in opt.dataset or "JPEG" in opt.dataset:
+    if "DN" in opt.train_name or "JPEG" in opt.train_name:
         opt.max_steps = 1000000
         opt.decay = "300-550-800"
 
-    if 'AIM' in opt.dataset:
-        opt.image_range = '1-19000/1-30'
-        opt.rgb_mean = (0.4294, 0.4267, 0.4021)
-
-    if 'DIV2K' in opt.dataset:
+    if 'DIV2K' in opt.train_name:
         opt.decay = "200-400-600-800"
         opt.max_steps = 1000000
 
-    if "RealSR" in opt.dataset:
+    if "RealSR" in opt.train_name:
         opt.patch_size *= opt.scale  # identical (LR, HR) resolution
 
 
-    # evaluation setup
-    opt.crop = 6 if "DIV2K" in opt.dataset or "AIM" in opt.dataset else 0
-    opt.crop += opt.scale if "SR" in opt.dataset else 4
-
-    # note: we tested on color DN task
-    # if "DIV2K" in opt.dataset or "DN" in opt.dataset or 'AIM' in opt.dataset:
-    #     opt.eval_y_only = False
-    # else:
-    #     opt.eval_y_only = True
 
     # default augmentation policies
     if opt.use_moa:
@@ -236,12 +224,12 @@ def make_template(opt):
         opt.aux_prob, opt.aux_alpha = 1.0, 1.2
         opt.mix_p = None
 
-        if "RealSR" in opt.dataset:
+        if "RealSR" in opt.train_name:
             opt.mix_p = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.4]
 
-        if "DN" in opt.dataset or "JPEG" in opt.dataset:
+        if "DN" in opt.train_name or "JPEG" in opt.train_name:
             opt.prob = [0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]
-        if "CARN" in opt.netG and not "RealSR" in opt.dataset:
+        if "CARN" in opt.netG and not "RealSR" in opt.train_name:
             opt.prob = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
 
 

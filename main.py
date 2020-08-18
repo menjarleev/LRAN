@@ -3,8 +3,9 @@ import importlib
 import torch
 from option.option import get_option
 from util.visualizer import Visualizer
+
 from solver import Solver
-from data.infer import InferDataset
+from data import generate_loader
 import numpy as np
 import random
 import os
@@ -38,20 +39,11 @@ def main():
     solver = Solver(generator, discriminator, opt)
     if opt.test_only:
         print('Evaluate {} (loaded from {})'.format(opt.netG, opt.pretrain))
-        psnr = solver.evaluate(solver.validation_loader, 'validation', opt.dataset)
+        psnr = solver.evaluate(solver.validation_loader, 'test')
         print("{:.2f}".format(psnr))
     elif opt.infer:
-        dataset = InferDataset(opt)
-        kwargs = {
-            'batch_size': 1,
-            'num_workers': 0,
-            'shuffle': False,
-            'drop_last': False,
-        }
-        dataloader = torch.utils.data.DataLoader(dataset, **kwargs)
+        dataloader = generate_loader(opt, 'infer')
         solver.inference(dataloader, opt.infer_name)
-
-
     else:
         solver.fit()
 

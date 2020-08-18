@@ -8,7 +8,15 @@ import torch
 import util
 from util.tensor_process import im2tensor, normalize
 
-def generate_loader(opt, phase, dataset_name):
+def generate_loader(opt, phase):
+    if phase == 'train' or phase == 'validation':
+        dataset_name = opt.train_type
+    elif phase == 'test':
+        dataset_name = opt.test_type
+    elif phase == 'infer':
+        dataset_name = opt.infer_type
+    else:
+        raise NotImplementedError('[%s] is not implemented' % phase)
     cname = dataset_name.replace('_', '')
     if "DIV2K" in dataset_name:
         mname = importlib.import_module('data.div2k')
@@ -20,9 +28,12 @@ def generate_loader(opt, phase, dataset_name):
             cname = 'BenchmarkDN'
         elif 'JPEG' in dataset_name:
             cname = 'BenchmarkJPEG'
-
+    elif 'infer' in dataset_name:
+        mname = importlib.import_module('data.infer')
+        cname = 'InferDataset'
     else:
-        raise ValueError('Unsupported datasetL {}'.format(opt.dataset))
+        mname = importlib.import_module('data.benchmark')
+        cname = 'BenchmarkSR'
 
     kwargs = {
         'batch_size': opt.batch_size if phase == 'train' else 1,
@@ -67,9 +78,6 @@ class BaseDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         if self.phase == 'train':
-            if 'AIMSR' in self.opt.dataset:
-                return len(self.HQ_paths) // self.opt.batch_size * self.opt.batch_size
-            else:
-                return (1000 * self.opt.batch_size) // len(self.HQ_paths) * len(self.HQ_paths)
+            return (1000 * self.opt.batch_size) // len(self.HQ_paths) * len(self.HQ_paths)
         return len(self.HQ_paths)
 

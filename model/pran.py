@@ -48,18 +48,21 @@ class AttentionLayer(nn.Module):
         self.spatial = SpatialAttention(kernel_size, actv, padding_mode)
 
     def forward(self, feat):
-        channel_attn = self.channel(feat) * feat
-        spatial_attn = self.spatial(feat) * feat
-        x = channel_attn + spatial_attn
+        chattn = self.channel(feat) * feat
+        spattn = self.spatial(feat) * feat
+        x = chattn + spattn
         return x
 
 class CSAB(nn.Module):
-    def __init__(self, in_channels, out_channels, reduction=16, actv=nn.ReLU, kernel_size=3, padding_mode='zeros'):
+    def __init__(self, in_channels, out_channels, reduction=16, actv=nn.ReLU, kernel_size=3, padding_mode='zeros', dropout=False, p=0.5):
         super(CSAB, self).__init__()
-        body = [
+        body = []
+        if dropout:
+            body += [nn.Dropout2d(p=p)]
+        body += [
             nn.Conv2d(in_channels, out_channels, 3, 1, 1, padding_mode=padding_mode),
             AttentionLayer(out_channels, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode),
-            actv(),
+            actv(inplace=True),
         ]
         self.body = nn.Sequential(*body)
 
@@ -89,8 +92,19 @@ class RCSAB(nn.Module):
         else:
             return res
 
+class DropoutWrapper(nn.Module):
+    def __init__(self, prev_layer, p=0.5):
+        super(DropoutWrapper, self).__init__()
+        self.body = prev_layer
+        self.dropout = nn.Dropout2d(p=p)
 
-def get_PRAB_group(n_channel, n_block, PRAB_dict, res_scale=1, kernel_size=7, reduction=16, actv=nn.ReLU, padding_mode='reflect', group_size=5):
+    def forward(self, x):
+        x, res = self.body(x)
+        res_out = self.dropout(res)
+        return x, res_out
+
+
+def get_PRAB_group(n_channel, n_block, PRAB_dict, res_scale=1, kernel_size=7, reduction=16, actv=nn.ReLU, padding_mode='reflect', group_size=5, dropout=False):
     assert type(PRAB_dict) == dict
     if n_block % group_size == 0:
         class Module(nn.Module):
@@ -107,11 +121,13 @@ def get_PRAB_group(n_channel, n_block, PRAB_dict, res_scale=1, kernel_size=7, re
                     elif submodule_name in class_dict:
                         submodule = class_dict[submodule_name](num_channel, sub_num_block, class_dict)
                     else:
-                        submodule = get_PRAB_group(num_channel, sub_num_block, class_dict)
+                        submodule = get_PRAB_group(num_channel, sub_num_block, class_dict, res_scale, kernel_size,
+                                                   reduction, actv, padding_mode, group_size, dropout=dropout)
                     setattr(self, 'submodule' + str(i + 1), submodule)
                 self.agg = CSAB(num_channel * (self.group_size - 1), num_channel, reduction=reduction, actv=actv,
-                                kernel_size=kernel_size, padding_mode=padding_mode)
-                self.fusion = CSAB(num_channel, num_channel, reduction=reduction, actv=actv, kernel_size=kernel_size, padding_mode=padding_mode)
+                                kernel_size=kernel_size, padding_mode=padding_mode, dropout=dropout)
+                self.fusion = CSAB(num_channel, num_channel, reduction=reduction, actv=actv,
+                                   kernel_size=kernel_size, padding_mode=padding_mode)
 
             def forward(self, feat):
                 x = feat
@@ -164,7 +180,8 @@ class Net(nn.Module):
         self.head = nn.Sequential(*head)
         self.body = get_PRAB_group(n_channel=opt.num_channels, n_block=opt.num_blocks,
                                    PRAB_dict={}, res_scale=opt.res_scale, kernel_size=3,
-                                   reduction=opt.reduction, actv=actv, padding_mode=padding_mode, group_size=opt.group_size)
+                                   reduction=opt.reduction, actv=actv, padding_mode=padding_mode,
+                                   group_size=opt.group_size, dropout=opt.dropout)
         self.tail = nn.Sequential(*tail)
         self.opt = opt
 

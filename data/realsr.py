@@ -9,7 +9,7 @@ import data
 
 class RealSR(data.BaseDataset):
     def __init__(self, phase, opt):
-        root = opt.dataset_root
+        root = opt.root
 
         self.scale = opt.scale
 

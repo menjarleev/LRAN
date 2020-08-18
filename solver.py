@@ -56,7 +56,7 @@ class Solver:
             self.module_dict.update({'optimG': self.optimG,
                                      'schedulerG': self.schedulerG})
 
-            self.train_loader = generate_loader(opt, 'train', opt.dataset)
+            self.train_loader = generate_loader(opt, 'train')
             if 'gan' in opt.loss_terms:
                 self.netD = netD.Net(opt).to(self.device)
                 Visualizer.log_print(opt, "# params of netD: {}".format(sum(map(lambda x: x.numel(), self.netD.parameters()))))
@@ -71,8 +71,8 @@ class Solver:
                 self.module_dict.update({'netD': self.netD,
                                          'optimD': self.optimD,
                                          'schedulerD': self.schedulerD})
-        if not opt.infer:
-            self.validation_loader = generate_loader(opt, 'validation', opt.dataset)
+            if not opt.no_validation:
+                self.validation_loader = generate_loader(opt, 'validation')
 
         if opt.continue_train or opt.pretrain:
             self.load(opt.pretrain, self.module_dict)
@@ -108,23 +108,23 @@ class Solver:
             else:
                 raise FileNotFoundError('iteration file at %s is not found' % json_path)
 
-        # if not opt.test_only and not opt.no_test_during_train:
-        #     self.test_dir = self.save_dir
-        #     os.makedirs(self.test_dir, exist_ok=True)
-        #     self.test_loader = generate_loader(opt, 'test', opt.dataset_test)
-        #     self.test_dict = {'netG': self.netG}
-        #     try:
-        #         test = self.data[opt.test_name]
-        #         Visualizer.log_print(opt, '========== [{}] current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K '
-        #                              .format(opt.test_name, test['psnr'], test['ssim'], test['score'], test['step'] // 1000))
-        #     except:
-        #         Visualizer.log_print(opt, 'test result not found')
-        #         self.data[opt.test_name] = {
-        #             'psnr': 0,
-        #             'ssim': 0,
-        #             'score': -10,
-        #             'step': 0,
-        #         }
+        if not opt.no_test:
+            self.test_dir = self.save_dir
+            os.makedirs(self.test_dir, exist_ok=True)
+            self.test_loader = generate_loader(opt, 'test')
+            self.test_dict = {'netG': self.netG}
+            try:
+                test = self.data[opt.test_name]
+                Visualizer.log_print(opt, '========== [{}] current best psnr {:.2f} ssim {:.4f} score {:.2f} @ step {}K '
+                                     .format(opt.test_name, test['psnr'], test['ssim'], test['score'], test['step'] // 1000))
+            except:
+                Visualizer.log_print(opt, 'test result not found')
+                self.data[opt.test_name] = {
+                    'psnr': 0,
+                    'ssim': 0,
+                    'score': -10,
+                    'step': 0,
+                }
         for step in tqdm(range(start, opt.max_steps), desc='train', leave=False):
             try:
                 inputs = next(iters)
@@ -174,16 +174,16 @@ class Solver:
 
             loss_dict = {**self.loss_collector.loss_names_G, **self.loss_collector.loss_names_D}
 
-            if (step + 1) % opt.eval_steps == 0 or opt.debug:
+            if (not opt.no_validation and (step + 1) % 10 == 0):
                 self.summary_and_save(step, loss_dict)
 
-            # if (not opt.no_test_during_train and (step + 1) % opt.test_steps == 0) or opt.debug:
+            # if (not opt.no_test and (step + 1) % opt.test_steps == 0) or opt.debug:
             #     self.test_and_save(step)
 
     def test_and_save(self, step):
         opt = self.opt
         step = step + 1
-        psnr, ssim = self.evaluate(self.test_loader, 'test', opt.test_name)
+        psnr, ssim = self.evaluate('test')
         score = util.calculate_score(psnr, ssim)
         test = self.data[opt.test_name]
         current_test = {
@@ -217,7 +217,7 @@ class Solver:
         step, max_steps = step + 1, self.opt.max_steps
         eta = (self.t2 - self.t1) / opt.eval_steps * (max_steps - step) / 3600
 
-        psnr, ssim = self.evaluate(self.validation_loader, 'validation', opt.dataset)
+        psnr, ssim = self.evaluate('validation')
         score = util.calculate_score(psnr, ssim)
         current_latest = {
             'psnr': psnr,
@@ -248,13 +248,13 @@ class Solver:
         scale = opt.scale
         method = opt.name
         if opt.save_result:
-            save_root = os.path.join(self.save_dir, 'SR', opt.degration, method, dataset_name, 'x{}'.format(scale))
+            save_root = os.path.join(self.save_dir, 'SR', opt.degradation, method, dataset_name, 'x{}'.format(scale))
             os.makedirs(save_root, exist_ok=True)
         tqdm_data_loader = tqdm(data_loader, desc='infer', leave=False)
         for i, input in enumerate(tqdm_data_loader):
             LR = input[0].to(self.device)
             path = input[1][0]
-            file_name = os.path.basename(path).replace('LR{}'.format(opt.degration), method)
+            file_name = os.path.basename(path).replace('LR{}'.format(opt.degradation), method)
             name = os.path.basename(input[1][0]).split('_')[0]
             print('process image [{}]'.format(name))
             if 'cutblur' in opt.augs:
@@ -270,16 +270,23 @@ class Solver:
 
 
     @torch.no_grad()
-    def evaluate(self, data_loader, phase, dataset_name):
+    def evaluate(self, phase):
         opt = self.opt
         method = opt.name
         scale = opt.scale
+        if phase == 'test':
+            dataset_name = opt.test_name
+            data_loader = self.test_loader
+        elif phase == 'validation':
+            dataset_name = opt.train_name
+            data_loader = self.validation_loader
+        else:
+            raise NotImplementedError('[%s] is not supported in evaluation' % phase)
         self.netG.eval()
 
         if opt.save_result:
-            save_root = os.path.join(self.save_dir, 'SR', opt.degration, dataset_name, 'x{}'.format(scale))
+            save_root = os.path.join(self.save_dir, 'SR', opt.degradation, dataset_name, 'x{}'.format(scale))
             os.makedirs(save_root, exist_ok=True)
-
 
         psnr = 0
         ssim = 0
@@ -287,7 +294,7 @@ class Solver:
         for i, inputs in enumerate(tqdm_data_loader):
             HR = inputs[0].to(self.device)
             LR = inputs[1].to(self.device)
-            path = inputs[2]
+            path = inputs[2][0]
 
             file_name = os.path.basename(path).replace('HR', method)
             if 'cutblur' in opt.augs and HR.size() != LR.size():
